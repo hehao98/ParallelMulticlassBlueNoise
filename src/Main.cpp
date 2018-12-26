@@ -33,8 +33,8 @@ void scrollCallback(GLFWwindow *window, double offsetX, double offsetY);
 void imGuiInit(GLFWwindow *window);
 void imGuiSetup(GLFWwindow *window);
 
-int gScreenWidth = 600;
-int gScreenHeight = 600;
+int gScreenWidth = 800;
+int gScreenHeight = 800;
 float gDeltaTime = 0.0f;
 float gLastFrame = 0.0f;
 
@@ -54,8 +54,9 @@ int main()
     imGuiInit(window);
 
     PointSet pointSet;
-    pointSet.generateWhiteNoisePointSet(10000, 0, 500, 0, 500);
-    pointSet.updateRenderData(-1, 0, 0, 1);
+    //pointSet.generateWhiteNoisePointSet(10000, 0, 500, 0, 500);
+    pointSet.readPointSetFromFile("../testdata/pointset1.txt", 0, 100, 0, 100);
+    pointSet.updateRenderData(-1, 1, -1, 1);
 
     Shader shader("../shaders/point.vert", "../shaders/point.frag");
 

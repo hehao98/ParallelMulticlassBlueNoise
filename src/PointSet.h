@@ -20,23 +20,32 @@
 
 class PointSet {
 public:
+    struct Point {
+        glm::dvec2 pos;
+        int type; // start from zero
+    };
+
     explicit PointSet();
 
     void generateWhiteNoisePointSet(int size,
                                     double xmin, double xmax, double ymin, double ymax);
+
+    void readPointSetFromFile(const char *path,
+                              double xmin, double xmax, double ymin, double ymax);
 
     void updateRenderData(float screenXmin, float screenXmax,
                           float screenYmin, float screenYmax);
 
     void render(const Shader &shader);
 private:
-    std::vector<glm::dvec2> points;
+    std::vector<Point> points;
     double xmin, xmax, ymin, ymax;
 
     // Members for OpenGL draw calls
-    float *vbuf;
-    int bufSize;
-    GLuint vao, vbo;
+    float *vbuf; // vertex buffer
+    int   *tbuf; // type buffer
+    size_t vbufSize, tbufSize;
+    GLuint vao, vbo1, vbo2;
 };
 
 
