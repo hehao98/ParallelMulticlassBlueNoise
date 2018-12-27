@@ -55,7 +55,7 @@ int main()
 
     PointSet pointSet;
     //pointSet.generateWhiteNoisePointSet(10000, 0, 500, 0, 500);
-    pointSet.readPointSetFromFile("../testdata/pointset1.txt", 0, 100, 0, 100);
+    pointSet.readPointSetFromFile("../testdata/pointset2.txt", 0, 100, 0, 100);
     pointSet.updateRenderData(-1, 1, -1, 1);
 
     Shader shader("../shaders/point.vert", "../shaders/point.frag");
@@ -72,13 +72,13 @@ int main()
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        imGuiSetup(window);
+        //imGuiSetup(window);
 
         pointSet.render(shader);
 
         // Render GUI last
-        ImGui::Render();
-        ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
+        //ImGui::Render();
+        //ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
         glfwPollEvents();
