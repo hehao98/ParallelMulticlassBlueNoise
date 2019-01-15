@@ -57,6 +57,7 @@ int RandomClass(const vector<float> &cdf)
 
 struct MulticlassParameters
 {
+    // Values calculated from input paramters
     int dimension;
     int num_classes;
     int class_probability_all_int;
@@ -66,12 +67,13 @@ struct MulticlassParameters
     Array<float> r_matrix;
     float patience_factor;
     int k_number;
-
+    vector<float> domain_size;
     UniformConflictChecker *conflict_checker;
+
+    // Sample domain related information
     Grid::DomainSpec grid_domain_spec;
     Grid *grid;
     float min_r_value;
-
     int num_trials;
     int target_num_samples;
     vector<int> target_num_samples_per_class;
@@ -79,20 +81,14 @@ struct MulticlassParameters
 
 struct SamplingContext
 {
-    struct MulticlassParameters &params;
     vector<PriorityGroup> priority_groups;
     int total_num_samples;
     vector<int> num_samples_per_class;
     vector<int> current_failures_per_class;
-
-    float getFillRatio(int class_id) const
-    {
-        return num_samples_per_class[class_id] * 1.0 /
-        params.target_num_samples_per_class[class_id];
-    }
 };
 
 int parseInput(MulticlassParameters &params, int argc, char **argv);
+int setDomainSize(MulticlassParameters &params, vector<float> domain_size_spec);
 vector<const Sample *> play(MulticlassParameters &params,
                             SamplingContext &context);
 
@@ -110,8 +106,18 @@ int main(int argc, char **argv)
             return 1;
         }
 
+        Timer timer;
+        timer.Start();
+
+        //setDomainSize(*params, vector<float>(2, 50));
+
         // Run the algorithm
         vector<const Sample *> samples = play(*params, *context);
+
+        timer.Stop();
+        const double total_time = timer.ElapsedTime();
+        cerr << "total time " << total_time << endl;
+        cerr << "# samples per second " << samples.size() / total_time << endl;
 
         // Output result
         for (unsigned int i = 0; i < samples.size(); i++)
@@ -149,14 +155,10 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
     {
         cerr << "Usage: " << argv[0]
              << " dimension num_classes (positive for optimal rmatrix computation, "
-                "negative for uniform off-diagonal entries) priority (either c "
-                "integers with low values indicating higher priority, or c "
-                "floating points indicating class selection probability) r_values "
+                "negative for uniform off-diagonal entries) priority (c "
+                "integers with low values indicating higher priority) r_values "
                 "(c*(c+1)/2 numbers in row major order of the upper matrix, or "
-                "only c diagonal entries) k_number (positive integer for the usual "
-                "k number, negative integer for target number of samples, [0 1] "
-                "float for rho-number, or positive float for specifying both the "
-                "k-number/patience-factor and the rho-number) domain_size "
+                "only c diagonal entries) k_number domain_size "
                 "(dimension numbers)";
         cerr << endl;
 
@@ -258,15 +260,6 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
         input_r_values.push_back(atof(argv[++argCtr]));
     }
 
-#ifdef DEBUG
-    cerr << "input_r_values: ";
-    for (unsigned int i = 0; i < input_r_values.size(); i++)
-    {
-        cerr << input_r_values[i] << " ";
-    }
-    cerr << endl;
-#endif
-
     params.r_matrix = RMatrix::BuildRMatrix(params.dimension, params.num_classes,
                                             rmatrix_method, input_r_values);
 
@@ -282,20 +275,49 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
         }
     }
 
-#ifdef DEBUG
-    cerr << "r_values: ";
-    for (unsigned int i = 0; i < r_values.size(); i++)
-    {
-        cerr << r_values[i] << " ";
-    }
-    cerr << endl;
-#endif
+    int k_number = atof(argv[++argCtr]);
 
-    float k_rho_number = atof(argv[++argCtr]);
-    float rho_number = k_rho_number - floor(k_rho_number);
-    int k_number =
-        (k_rho_number == floor(k_rho_number) ? static_cast<int>(k_rho_number)
-                                             : 0);
+    const float patience_factor = max(
+        static_cast<double>(1.0), abs(static_cast<double>(floor(k_number))));
+
+    if (patience_factor != 0)
+    {
+        cerr << "patience_factor: " << patience_factor << endl;
+    }
+
+    // distance field
+    vector<float> class_r_values(params.num_classes);
+    {
+        for (unsigned int i = 0; i < class_r_values.size(); i++)
+        {
+            if (!params.r_matrix.Get(vector<int>(2, i), class_r_values[i]))
+            {
+                throw Exception("cannot get value for class_r_values");
+            }
+        }
+    }
+
+    params.r_values = r_values;
+    params.k_number = k_number;
+    params.class_probability_all_int = class_probability_all_int;
+    params.class_probability = class_probability;
+    params.priority_values = priority_values;
+    params.patience_factor = patience_factor;
+    params.conflict_checker = new UniformConflictChecker(params.r_matrix);
+
+    float min_r_value = params.r_values[0];
+    for (unsigned int i = 0; i < params.r_values.size(); i++)
+    {
+        if (params.r_values[i] < min_r_value)
+            min_r_value = params.r_values[i];
+    }
+
+    if (min_r_value <= 0)
+    {
+        cerr << "min_r_value <= 0" << endl;
+        return -1;
+    }
+    params.min_r_value = min_r_value;
 
     vector<float> domain_size_spec;
     while (((argCtr + 1) < argc) &&
@@ -319,54 +341,19 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
             return -1;
         }
     }
+    params.domain_size = domain_size_spec;
 
-    const float patience_factor = max(
-        static_cast<double>(1.0), abs(static_cast<double>(floor(k_rho_number))));
+    setDomainSize(params, domain_size_spec);
 
-    if (patience_factor != 0)
-    {
-        cerr << "patience_factor: " << patience_factor << endl;
-    }
+    return 0;
+}
 
-    // distance field
-    vector<float> class_r_values(params.num_classes);
-    {
-        for (unsigned int i = 0; i < class_r_values.size(); i++)
-        {
-            if (!params.r_matrix.Get(vector<int>(2, i), class_r_values[i]))
-            {
-                throw Exception("cannot get value for class_r_values");
-            }
-        }
-    }
-
-    // init grid
+int setDomainSize(MulticlassParameters &params, vector<float> domain_size_spec)
+{
     params.grid_domain_spec = Grid::BuildDomainSpec(domain_size_spec);
+    params.grid = new Grid(params.grid_domain_spec, params.min_r_value);
 
-    params.r_values = r_values;
-    float min_r_value = params.r_values[0];
-    for (unsigned int i = 0; i < params.r_values.size(); i++)
-    {
-        if (params.r_values[i] < min_r_value)
-            min_r_value = params.r_values[i];
-    }
-
-    if (min_r_value <= 0)
-    {
-        cerr << "min_r_value <= 0" << endl;
-        return -1;
-    }
-
-    params.k_number = k_number;
-    params.class_probability_all_int = class_probability_all_int;
-    params.class_probability = class_probability;
-    params.priority_values = priority_values;
-    params.patience_factor = patience_factor;
-    params.min_r_value = min_r_value;
-    params.conflict_checker = new UniformConflictChecker(params.r_matrix);
-    params.grid = new Grid(params.grid_domain_spec, min_r_value);
-
-    int num_trials = k_number;
+    int num_trials = params.k_number;
     int total_num_grid_cells = 1;
     {
         Grid grid_local(params.grid_domain_spec, params.min_r_value);
@@ -376,70 +363,24 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
             num_trials *= num_grid_cells[i];
             total_num_grid_cells *= num_grid_cells[i];
         }
-
-#ifdef DEBUG
-        cerr << "num_grid_cells: ";
-        for (unsigned int i = 0; i < num_grid_cells.size(); i++)
-        {
-            cerr << num_grid_cells[i] << " ";
-        }
-        cerr << endl;
-#endif
     }
 
-    int target_num_samples = -k_number;
+    int target_num_samples = -params.k_number;
 
     vector<int> target_num_samples_per_class(params.num_classes, 0);
-    if ((rho_number > 0) && (rho_number < 1))
+
+    if (params.k_number >= 0)
     {
-        cerr << "rho_number " << rho_number << endl;
-
-        for (int i = 0; i < params.num_classes; i++)
-        {
-            float value = 0;
-            params.r_matrix.Get(vector<int>(2, i), value);
-
-            target_num_samples_per_class[i] =
-                Math::ComputeMaxNumSamples(params.dimension, value / rho_number);
-
-            for (unsigned int j = 0; j < domain_size_spec.size(); j++)
-            {
-                target_num_samples_per_class[i] *= domain_size_spec[j];
-            }
-        }
-
-        cerr << "target number of samples per class :";
-        for (unsigned int i = 0; i < target_num_samples_per_class.size(); i++)
-        {
-            cerr << " " << target_num_samples_per_class[i];
-        }
-        cerr << endl;
-
-        target_num_samples = 0;
-        for (unsigned int i = 0; i < target_num_samples_per_class.size(); i++)
-        {
-            target_num_samples += target_num_samples_per_class[i];
-        }
-
-        cerr << target_num_samples << " target samples" << endl;
+        cerr << num_trials << " trials" << endl;
     }
     else
     {
-        if (params.k_number >= 0)
-        {
-            cerr << num_trials << " trials" << endl;
-        }
-        else
-        {
-            cerr << target_num_samples << " target samples" << endl;
-        }
+        cerr << target_num_samples << " target samples" << endl;
     }
 
     params.num_trials = num_trials;
     params.target_num_samples = target_num_samples;
     params.target_num_samples_per_class = target_num_samples_per_class;
-
-    return 0;
 }
 
 void generateSample(MulticlassParameters &params, SamplingContext &context,
@@ -738,7 +679,6 @@ vector<const Sample *> play(MulticlassParameters &params,
     Random::InitRandomNumberGenerator(random_seed);
 
     // Initialize algorithm context
-    context.params = params;
     context.priority_groups = BuildPriorityGroups(
         params.dimension, params.priority_values, params.r_matrix,
         params.num_trials, params.target_num_samples);
@@ -751,9 +691,7 @@ vector<const Sample *> play(MulticlassParameters &params,
     vector<SampleRecord> sample_history;
 #endif
 
-    Timer timer;
 
-    timer.Start();
 
     for (unsigned int which_priority_group = 0;
          which_priority_group < context.priority_groups.size();
@@ -789,9 +727,7 @@ vector<const Sample *> play(MulticlassParameters &params,
         }
     }
 
-    timer.Stop();
-    const double total_time = timer.ElapsedTime();
-    cerr << "total time " << total_time << endl;
+
 
     // output
     vector<const Sample *> samples;
@@ -817,8 +753,6 @@ vector<const Sample *> play(MulticlassParameters &params,
         cerr << "null history file name" << endl;
     }
 #endif
-
-    cerr << "# samples per second " << samples.size() / total_time << endl;
 
     // done
     return samples;

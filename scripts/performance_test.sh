@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# NOTE THAT THIS SCRIPT IS NOT FOR DIRECT EXECUTION!!!
+
 # ./DartThrowing
 #   dimension
 #   num_classes (positive for optimal rmatrix computation, negative for uniform off-diagonal entries)
@@ -19,3 +21,4 @@
 ./DartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
 ./Main
 
+./ParallelDartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
