@@ -32,11 +32,7 @@ using namespace std;
 
 #include "SampleRecord.hpp"
 
-// a strategy that allows the removal of existing neighbors
-// the best and default option
-#define _PSYCHO_RHO_STRATEGY
-
-#define DEBUG
+//#define DEBUG
 
 struct Sortee
 {
@@ -93,59 +89,79 @@ int RandomClass(const vector<float> &cdf)
     return selection % cdf.size();
 }
 
-int Main(int argc, char **argv)
-{
+struct MulticlassParameters {
+    int dimension;
+    int num_classes;
+    int class_probability_all_int;
+    vector<float> class_probability;
+    vector<int> priority_values;
+    vector<float> r_values;
+    Array<float> r_matrix;
+    vector<float> domain_size_spec;
+    float patience_factor;
+    int k_number;
+
+    UniformConflictChecker *conflict_checker;
+    Grid::DomainSpec grid_domain_spec;
+    Grid *grid;
+    float min_r_value;
+
+    int num_trials;
+    int target_num_samples;
+    vector<int> target_num_samples_per_class;
+};
+
+int parseInput(MulticlassParameters &params, int argc, char** argv) {
     // input arguments
-    int min_argc = 7;
+    int min_argc = 7, argCtr = 0;
 
     if (argc < min_argc)
     {
         cerr << "Usage: " << argv[0]
              << " dimension num_classes (positive for optimal rmatrix computation, "
-                "negative for uniform off-diagonal entries) priority (either c "
-                "integers with low values indicating higher priority, or c "
-                "floating points indicating class selection probability) r_values "
-                "(c*(c+1)/2 numbers in row major order of the upper matrix, or "
-                "only c diagonal entries) k_number (positive integer for the usual "
-                "k number, negative integer for target number of samples, [0 1] "
-                "float for rho-number, or positive float for specifying both the "
-                "k-number/patience-factor and the rho-number) domain_size "
-                "(dimension numbers)";
+                     "negative for uniform off-diagonal entries) priority (either c "
+                     "integers with low values indicating higher priority, or c "
+                     "floating points indicating class selection probability) r_values "
+                     "(c*(c+1)/2 numbers in row major order of the upper matrix, or "
+                     "only c diagonal entries) k_number (positive integer for the usual "
+                     "k number, negative integer for target number of samples, [0 1] "
+                     "float for rho-number, or positive float for specifying both the "
+                     "k-number/patience-factor and the rho-number) domain_size "
+                     "(dimension numbers)";
         cerr << endl;
 
-        return 1;
+        return -1;
     }
 
-    int argCtr = 0;
-    const int dimension = atoi(argv[++argCtr]);
-    if (dimension <= 0)
+    params.dimension = atoi(argv[++argCtr]);
+    if (params.dimension <= 0)
     {
         cerr << "dimension must be > 0" << endl;
-        return 1;
+        return -1;
     }
 
-    const char *num_classes_spec = argv[++argCtr];
+    char *num_classes_spec = argv[++argCtr];
     if (strlen(num_classes_spec) <= 0)
     {
         cerr << "empty specification for num_classes" << endl;
-        return 1;
+        return -1;
     }
 
-    const int num_classes_i = atoi(num_classes_spec);
-    const RMatrix::Method rmatrix_method =
-        (num_classes_spec[0] == '0'
+    int num_classes_i = atoi(num_classes_spec);
+    RMatrix::Method rmatrix_method =
+            (num_classes_spec[0] == '0'
              ? RMatrix::GEOMETRIC
              : (num_classes_i > 0 ? RMatrix::OPTIMAL : RMatrix::UNIFORM));
 
-    const int num_classes = num_classes_i > 0 ? num_classes_i : -num_classes_i;
-    if (num_classes <= 0)
+    params.num_classes = num_classes_i > 0 ? num_classes_i : -num_classes_i;
+    if (params.num_classes <= 0)
     {
         cerr << "num_classes must be > 0" << endl;
-        return 1;
+        return -1;
     }
 
     int class_probability_all_int = 1;
-    vector<float> class_probability(num_classes);
+    vector<float> class_probability(params.num_classes);
     for (unsigned int i = 0; i < class_probability.size(); i++)
     {
         class_probability[i] = atof(argv[++argCtr]);
@@ -155,17 +171,17 @@ int Main(int argc, char **argv)
         }
     }
 
-    vector<int> priority_values(num_classes);
+    vector<int> priority_values(params.num_classes);
     for (unsigned int i = 0; i < priority_values.size(); i++)
     {
         priority_values[i] = class_probability_all_int
-                                 ? static_cast<int>(floor(class_probability[i]))
-                                 : 0;
+                             ? static_cast<int>(floor(class_probability[i]))
+                             : 0;
 
-        if ((priority_values[i] < 0) || (priority_values[i] >= num_classes))
+        if ((priority_values[i] < 0) || (priority_values[i] >= params.num_classes))
         {
             cerr << "priority number must be within [0 num_classes-1]" << endl;
-            return 1;
+            return -1;
         }
     }
 
@@ -173,7 +189,7 @@ int Main(int argc, char **argv)
     {
         for (unsigned int i = 0; i < class_probability.size(); i++)
         {
-            class_probability[i] = (i + 1.0) / num_classes;
+            class_probability[i] = (i + 1.0) / params.num_classes;
         }
     }
     else
@@ -191,17 +207,17 @@ int Main(int argc, char **argv)
     }
     cerr << endl;
 
-    min_argc += (dimension - 1) +
-                (num_classes - 1); // we now know the # of domain_size arguments
-                                   // and # of priority arguments
+    min_argc += (params.dimension - 1) +
+                (params.num_classes - 1); // we now know the # of domain_size arguments
+    // and # of priority arguments
 
     int num_r_values = argc - min_argc + 1;
 
-    if ((num_r_values != num_classes) &&
-        (num_r_values != num_classes * (num_classes + 1) / 2))
+    if ((num_r_values != params.num_classes) &&
+        (num_r_values != params.num_classes * (params.num_classes + 1) / 2))
     {
         cerr << "wrong number of r_values";
-        return 1;
+        return -1;
     }
 
     vector<float> input_r_values;
@@ -219,18 +235,18 @@ int Main(int argc, char **argv)
     cerr << endl;
 #endif
 
-    const Array<float> r_matrix = RMatrix::BuildRMatrix(
-        dimension, num_classes, rmatrix_method, input_r_values);
+    params.r_matrix = RMatrix::BuildRMatrix(
+            params.dimension, params.num_classes, rmatrix_method, input_r_values);
 
     vector<float> r_values;
-    r_matrix.Get(r_values);
+    params.r_matrix.Get(r_values);
 
     for (unsigned int i = 0; i < r_values.size(); i++)
     {
         if (r_values[i] <= 0)
         {
             cerr << "bad r_matrix" << endl;
-            return 1;
+            return -1;
         }
     }
 
@@ -243,19 +259,19 @@ int Main(int argc, char **argv)
     cerr << endl;
 #endif
 
-    const float k_rho_number = atof(argv[++argCtr]);
-    const float rho_number = k_rho_number - floor(k_rho_number);
-    const int k_number =
-        (k_rho_number == floor(k_rho_number) ? static_cast<int>(k_rho_number)
-                                             : 0);
+    float k_rho_number = atof(argv[++argCtr]);
+    float rho_number = k_rho_number - floor(k_rho_number);
+    int k_number =
+            (k_rho_number == floor(k_rho_number) ? static_cast<int>(k_rho_number)
+                                                 : 0);
 
     vector<float> domain_size_spec;
-    while (((argCtr + 1) < argc) && (domain_size_spec.size() < dimension))
+    while (((argCtr + 1) < argc) && (domain_size_spec.size() < params.dimension))
     {
         domain_size_spec.push_back(atof(argv[++argCtr]));
     }
 
-    if (domain_size_spec.size() != dimension)
+    if (domain_size_spec.size() != params.dimension)
     {
         // should probably use assert...
         throw Exception("domain_size_spec.size() != dimension");
@@ -267,12 +283,12 @@ int Main(int argc, char **argv)
         {
             cerr << "domain_size_spec[" << i << "] <= 0 - " << domain_size_spec[i]
                  << endl;
-            return 1;
+            return -1;
         }
     }
 
     const float patience_factor = max(
-        static_cast<double>(1.0), abs(static_cast<double>(floor(k_rho_number))));
+            static_cast<double>(1.0), abs(static_cast<double>(floor(k_rho_number))));
 
     if (patience_factor != 0)
     {
@@ -280,49 +296,50 @@ int Main(int argc, char **argv)
     }
 
     // distance field
-    vector<float> class_r_values(num_classes);
+    vector<float> class_r_values(params.num_classes);
     {
         for (unsigned int i = 0; i < class_r_values.size(); i++)
         {
-            if (!r_matrix.Get(vector<int>(2, i), class_r_values[i]))
+            if (!params.r_matrix.Get(vector<int>(2, i), class_r_values[i]))
             {
                 throw Exception("cannot get value for class_r_values");
             }
         }
     }
 
-    const UniformDistanceField distance_field(domain_size_spec, class_r_values);
-    UniformConflictChecker conflict_checker(r_matrix);
+    params.domain_size_spec = domain_size_spec;
 
     // init grid
-    const Grid::DomainSpec grid_domain_spec =
-        Grid::BuildDomainSpec(domain_size_spec);
+    params.grid_domain_spec =
+            Grid::BuildDomainSpec(params.domain_size_spec);
 
-    float min_r_value = r_values[0];
-    float max_r_value = r_values[0];
-    for (unsigned int i = 0; i < r_values.size(); i++)
+    params.r_values = r_values;
+    float min_r_value = params.r_values[0];
+    for (unsigned int i = 0; i < params.r_values.size(); i++)
     {
-        if (r_values[i] < min_r_value)
-            min_r_value = r_values[i];
-        if (r_values[i] > max_r_value)
-            max_r_value = r_values[i];
+        if (params.r_values[i] < min_r_value)
+            min_r_value = params.r_values[i];
     }
 
     if (min_r_value <= 0)
     {
         cerr << "min_r_value <= 0" << endl;
-        return 1;
+        return -1;
     }
 
-    Grid grid(grid_domain_spec, min_r_value);
+    params.k_number = k_number;
+    params.class_probability_all_int = class_probability_all_int;
+    params.class_probability = class_probability;
+    params.priority_values = priority_values;
+    params.patience_factor = patience_factor;
+    params.min_r_value = min_r_value;
+    params.conflict_checker = new UniformConflictChecker(params.r_matrix);
+    params.grid = new Grid(params.grid_domain_spec, min_r_value);
 
-    // cerr << "min_r_value: " << min_r_value << endl;
-
-    // play
     int num_trials = k_number;
     int total_num_grid_cells = 1;
     {
-        Grid grid_local(grid_domain_spec, min_r_value);
+        Grid grid_local(params.grid_domain_spec, params.min_r_value);
         const vector<int> num_grid_cells = grid_local.NumCells();
         for (unsigned int i = 0; i < num_grid_cells.size(); i++)
         {
@@ -330,7 +347,7 @@ int Main(int argc, char **argv)
             total_num_grid_cells *= num_grid_cells[i];
         }
 
-#if 0
+#ifdef DEBUG
         cerr << "num_grid_cells: ";
         for(unsigned int i = 0; i < num_grid_cells.size(); i++)
         {
@@ -342,22 +359,22 @@ int Main(int argc, char **argv)
 
     int target_num_samples = -k_number;
 
-    vector<int> target_num_samples_per_class(num_classes, 0);
+    vector<int> target_num_samples_per_class(params.num_classes, 0);
     if ((rho_number > 0) && (rho_number < 1))
     {
         cerr << "rho_number " << rho_number << endl;
 
-        for (int i = 0; i < num_classes; i++)
+        for (int i = 0; i < params.num_classes; i++)
         {
             float value = 0;
-            r_matrix.Get(vector<int>(2, i), value);
+            params.r_matrix.Get(vector<int>(2, i), value);
 
             target_num_samples_per_class[i] =
-                Math::ComputeMaxNumSamples(dimension, value / rho_number);
+                    Math::ComputeMaxNumSamples(params.dimension, value / rho_number);
 
-            for (unsigned int j = 0; j < domain_size_spec.size(); j++)
+            for (unsigned int j = 0; j < params.domain_size_spec.size(); j++)
             {
-                target_num_samples_per_class[i] *= domain_size_spec[j];
+                target_num_samples_per_class[i] *= params.domain_size_spec[j];
             }
         }
 
@@ -378,7 +395,7 @@ int Main(int argc, char **argv)
     }
     else
     {
-        if (k_number >= 0)
+        if (params.k_number >= 0)
         {
             cerr << num_trials << " trials" << endl;
         }
@@ -388,23 +405,40 @@ int Main(int argc, char **argv)
         }
     }
 
+    params.num_trials = num_trials;
+    params.target_num_samples = target_num_samples;
+    params.target_num_samples_per_class = target_num_samples_per_class;
+
+    return 0;
+}
+
+int Main(int argc, char **argv)
+{
+    MulticlassParameters params;
+
+    if (parseInput(params, argc, argv) < 0) {
+        cerr << "Something wrong with input, quiting..." << std::endl;
+        return 1;
+    }
+
+    // play
     vector<PriorityGroup> priority_groups = BuildPriorityGroups(
-        dimension, priority_values, r_matrix, num_trials, target_num_samples);
+        params.dimension, params.priority_values, params.r_matrix, params.num_trials,params.target_num_samples);
 
     const unsigned long random_seed = time(0);
     // cerr << "random seed: " << random_seed << endl;
     Random::InitRandomNumberGenerator(random_seed);
 
     int total_num_samples = 0;
-    vector<int> num_samples_per_class(num_classes, 0);
-    vector<int> current_failures_per_class(num_classes, 0);
+    vector<int> num_samples_per_class(params.num_classes, 0);
+    vector<int> current_failures_per_class(params.num_classes, 0);
 
 #ifdef _RECORD_SAMPLE_HISTORY
     // record class numbers for each sample drawn
     vector<SampleRecord> sample_history;
 #endif
 
-    vector<int> subdividable(num_classes, 1);
+    vector<int> subdividable(params.num_classes, 1);
 
     Timer timer;
 
@@ -422,7 +456,7 @@ int Main(int argc, char **argv)
             {
                 cerr << priority_group.classes[i] << " ";
             }
-            cerr << "), k_number: " << k_number
+            cerr << "), k_number: " << params.k_number
                  << ", num_trials: " << priority_group.num_trials
                  << ", num_samples: " << priority_group.target_num_samples << endl;
         }
@@ -436,11 +470,11 @@ int Main(int argc, char **argv)
         }
 
         for (int trial = 0;
-             ((k_number > 0) && (trial < priority_group.num_trials)) ||
-             ((k_number <= 0) && (num_samples < priority_group.target_num_samples));
+             ((params.k_number > 0) && (trial < priority_group.num_trials)) ||
+             ((params.k_number <= 0) && (num_samples < priority_group.target_num_samples));
              trial++)
         {
-            Sample *sample = new Sample(dimension);
+            Sample *sample = new Sample(params.dimension);
 
             if (priority_group.classes.size() <= 0)
             {
@@ -449,7 +483,7 @@ int Main(int argc, char **argv)
 
             vector<int> sample_ids;
 
-            if (k_number == 0)
+            if (params.k_number == 0)
             {
                 // pick the most under filled class
                 float min_fill_ratio = 2.0;
@@ -459,7 +493,7 @@ int Main(int argc, char **argv)
                 {
                     const int current_id = priority_group.classes[i];
                     const float fill_ratio = num_samples_per_class[current_id] * 1.0 /
-                                             target_num_samples_per_class[current_id];
+                                             params.target_num_samples_per_class[current_id];
                     if (min_fill_ratio >= fill_ratio)
                     {
                         min_fill_ratio = fill_ratio;
@@ -477,7 +511,7 @@ int Main(int argc, char **argv)
                     sample_ids.push_back(sample->id);
                 }
             }
-            else if (class_probability_all_int)
+            else if (params.class_probability_all_int)
             {
                 sample->id = static_cast<int>(floor(Random::UniformRandom() *
                                                     priority_group.classes.size())) %
@@ -492,7 +526,7 @@ int Main(int argc, char **argv)
                     throw Exception("priority_groups.size() != 1");
                 }
 
-                sample->id = RandomClass(class_probability);
+                sample->id = RandomClass(params.class_probability);
                 sample_ids.push_back(sample->id);
             }
 
@@ -511,27 +545,27 @@ int Main(int argc, char **argv)
 #endif
 
             if (sample->coordinate.Dimension() !=
-                grid_domain_spec.domain_size.size())
+                params.grid_domain_spec.domain_size.size())
             {
                 throw Exception(
                     "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
             }
 
-            vector<float> sample_domain_min_corner(dimension);
-            vector<float> sample_domain_max_corner(dimension);
+            vector<float> sample_domain_min_corner(params.dimension);
+            vector<float> sample_domain_max_corner(params.dimension);
 
             const int has_tried_hard_enough =
                 (current_failures_per_class[sample->id] >
-                 patience_factor * target_num_samples_per_class[sample->id]);
+                 params.patience_factor * params.target_num_samples_per_class[sample->id]);
             // const int has_tried_hard_enough =
             // (current_failures_per_class[sample->id] >
             // patience_factor*total_num_grid_cells);
 
-            for (int i = 0; i < dimension; i++)
+            for (int i = 0; i < params.dimension; i++)
             {
                 sample_domain_min_corner[i] = 0;
                 sample_domain_max_corner[i] =
-                    grid_domain_spec.domain_size[i] * grid_domain_spec.cell_size;
+                    params.grid_domain_spec.domain_size[i] * params.grid_domain_spec.cell_size;
             }
 
             for (int i = 0; i < sample->coordinate.Dimension(); i++)
@@ -559,11 +593,11 @@ int Main(int argc, char **argv)
             {
                 sample->id = sample_ids[which_id];
 
-                if (!grid.Inside(*sample))
+                if (!params.grid->Inside(*sample))
                 {
                     sample_fate = SampleRecord::OUTSIDE;
                 }
-                else if (!grid.Conflict(*sample, conflict_checker))
+                else if (!params.grid->Conflict(*sample, *params.conflict_checker))
                 {
                     sample_fate = SampleRecord::ACCEPTED;
                 }
@@ -579,11 +613,11 @@ int Main(int argc, char **argv)
                     }
 #endif
 
-                    if ((k_number == 0) && has_tried_hard_enough)
+                    if ((params.k_number == 0) && has_tried_hard_enough)
                     {
                         // cerr << "try killing" << endl; // debug
                         vector<const Sample *> neighbors;
-                        if (!grid.GetConflicts(*sample, conflict_checker, neighbors))
+                        if (!params.grid->GetConflicts(*sample, *params.conflict_checker, neighbors))
                         {
                             throw Exception("cannot get conflicts");
                         }
@@ -592,16 +626,16 @@ int Main(int argc, char **argv)
 
                         const float sample_fill_ratio =
                             num_samples_per_class[sample->id] * 1.0 /
-                            target_num_samples_per_class[sample->id];
+                            params.target_num_samples_per_class[sample->id];
                         float sample_r_value = 0;
-                        r_matrix.Get(vector<int>(2, sample->id), sample_r_value);
+                        params.r_matrix.Get(vector<int>(2, sample->id), sample_r_value);
 
                         for (unsigned int j = 0; j < neighbors.size(); j++)
                         {
                             const Sample &current_neighbor = *neighbors[j];
 
                             float neighbor_r_value = 0;
-                            r_matrix.Get(vector<int>(2, current_neighbor.id),
+                            params.r_matrix.Get(vector<int>(2, current_neighbor.id),
                                          neighbor_r_value);
 
                             if (neighbor_r_value >= sample_r_value)
@@ -619,7 +653,7 @@ int Main(int argc, char **argv)
                                 {
                                     current_neighbor_fill_ratio =
                                         num_samples_per_class[current_id] * 1.0 /
-                                        target_num_samples_per_class[current_id];
+                                        params.target_num_samples_per_class[current_id];
                                 }
                             }
 
@@ -635,7 +669,7 @@ int Main(int argc, char **argv)
                         {
                             for (unsigned int j = 0; j < neighbors.size(); j++)
                             {
-                                if (!grid.Remove(*neighbors[j]))
+                                if (!params.grid->Remove(*neighbors[j]))
                                 {
                                     throw Exception("cannot remove neighbor");
                                 }
@@ -653,7 +687,7 @@ int Main(int argc, char **argv)
                             }
 
                             neighbors.clear();
-                            if (!grid.Conflict(*sample, conflict_checker))
+                            if (!params.grid->Conflict(*sample, *params.conflict_checker))
                             {
                                 sample_fate = SampleRecord::ACCEPTED;
                             }
@@ -686,7 +720,7 @@ int Main(int argc, char **argv)
                     const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
                     sample_history.push_back(new_record);
 #endif
-                    if (!grid.Add(*sample))
+                    if (!params.grid->Add(*sample))
                     {
                         throw Exception("cannot add sample");
                         delete sample;
@@ -735,7 +769,7 @@ int Main(int argc, char **argv)
 
     // output
     vector<const Sample *> samples;
-    grid.GetSamples(samples);
+    params.grid->GetSamples(samples);
 
     if (total_num_samples != samples.size())
     {
@@ -776,14 +810,6 @@ int Main(int argc, char **argv)
     }
     samples.clear();
 
-#if defined(_ADAPTIVE_SAMPLING)
-    if (sampled_distance_field)
-    {
-        delete sampled_distance_field;
-        sampled_distance_field = 0;
-    }
-#endif
-
     // done
     return 0;
 }
@@ -794,7 +820,7 @@ int main(int argc, char **argv)
     {
         return Main(argc, argv);
     }
-    catch (Exception e)
+    catch(Exception e)
     {
         cerr << "Error: " << e.Message() << endl;
         return 1;

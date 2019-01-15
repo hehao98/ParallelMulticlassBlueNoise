@@ -55,7 +55,7 @@ int main()
 
     PointSet pointSet;
     //pointSet.generateWhiteNoisePointSet(10000, 0, 500, 0, 500);
-    pointSet.readPointSetFromFile("../testdata/pointset2.txt", 0, 100, 0, 100);
+    pointSet.readPointSetFromFile("../testdata/pointset1.txt", 0, 100, 0, 100);
     pointSet.updateRenderData(-1, 1, -1, 1);
 
     Shader shader("../shaders/point.vert", "../shaders/point.frag");

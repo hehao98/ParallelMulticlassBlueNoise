@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.1)
 project(ParallelMulticlassBlueNoise)
 
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_FLAGS "-O3")
 
 # OpenGL Dependencies
 find_package(OpenGL REQUIRED)
