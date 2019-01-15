@@ -32,7 +32,7 @@ using namespace std;
 
 #include "SampleRecord.hpp"
 
-#define DEBUG
+//#define DEBUG
 
 int RandomClass(const vector<float> &cdf)
 {
@@ -63,7 +63,6 @@ struct MulticlassParameters {
     vector<int> priority_values;
     vector<float> r_values;
     Array<float> r_matrix;
-    vector<float> domain_size_spec;
     float patience_factor;
     int k_number;
 
@@ -77,23 +76,31 @@ struct MulticlassParameters {
     vector<int> target_num_samples_per_class;
 };
 
+struct SamplingContext {
+    vector<PriorityGroup> priority_groups;
+    int total_num_samples;
+    vector<int> num_samples_per_class;
+    vector<int> current_failures_per_class;
+};
+
 int parseInput(MulticlassParameters &params, int argc, char** argv);
-vector<const Sample *> play(MulticlassParameters &params);
+vector<const Sample *> play(MulticlassParameters &params, SamplingContext &context);
 
 int main(int argc, char **argv)
 {
     try
     {
-        MulticlassParameters params;
+        MulticlassParameters *params = new MulticlassParameters();
+        SamplingContext *context = new SamplingContext();
 
         // Get parameters from input
-        if (parseInput(params, argc, argv) < 0) {
+        if (parseInput(*params, argc, argv) < 0) {
             cerr << "Something wrong with input, quiting..." << std::endl;
             return 1;
         }
 
         // Run the algorithm
-        vector<const Sample *> samples = play(params);
+        vector<const Sample *> samples = play(*params, *context);
 
         // Output result
         for (unsigned int i = 0; i < samples.size(); i++)
@@ -105,6 +112,15 @@ int main(int argc, char **argv)
             }
             cout << endl;
         }
+
+        // Clean up
+        for (unsigned int i = 0; i < samples.size(); i++)
+        {
+            delete samples[i];
+        }
+        samples.clear();
+        delete params;
+        delete context;
         return 0;
     }
     catch(Exception e)
@@ -310,11 +326,10 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
         }
     }
 
-    params.domain_size_spec = domain_size_spec;
 
     // init grid
     params.grid_domain_spec =
-            Grid::BuildDomainSpec(params.domain_size_spec);
+            Grid::BuildDomainSpec(domain_size_spec);
 
     params.r_values = r_values;
     float min_r_value = params.r_values[0];
@@ -375,9 +390,9 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
             target_num_samples_per_class[i] =
                     Math::ComputeMaxNumSamples(params.dimension, value / rho_number);
 
-            for (unsigned int j = 0; j < params.domain_size_spec.size(); j++)
+            for (unsigned int j = 0; j < domain_size_spec.size(); j++)
             {
-                target_num_samples_per_class[i] *= params.domain_size_spec[j];
+                target_num_samples_per_class[i] *= domain_size_spec[j];
             }
         }
 
@@ -415,34 +430,316 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     return 0;
 }
 
-vector<const Sample *> play(MulticlassParameters &params)
+void generateSample(MulticlassParameters &params, SamplingContext &context, int num_samples, int which_priority_group)
 {
-    vector<PriorityGroup> priority_groups = BuildPriorityGroups(
-            params.dimension, params.priority_values, params.r_matrix, params.num_trials, params.target_num_samples);
+    Sample *sample = new Sample(params.dimension);
 
+    const PriorityGroup &priority_group = context.priority_groups[which_priority_group];
+    auto &total_num_samples = context.total_num_samples;
+    auto &num_samples_per_class = context.num_samples_per_class;
+    auto &current_failures_per_class = context.current_failures_per_class;
+
+    if (priority_group.classes.size() <= 0)
+    {
+        throw Exception("priority_group.classes.size() <= 0");
+    }
+
+    vector<int> sample_ids;
+
+    if (params.k_number == 0)
+    {
+        // pick the most under filled class
+        float min_fill_ratio = 2.0;
+        int min_fill_id = -1;
+
+        for (unsigned int i = 0; i < priority_group.classes.size(); i++)
+        {
+            const int current_id = priority_group.classes[i];
+            const float fill_ratio = num_samples_per_class[current_id] * 1.0 /
+                                     params.target_num_samples_per_class[current_id];
+            if (min_fill_ratio >= fill_ratio)
+            {
+                min_fill_ratio = fill_ratio;
+                min_fill_id = current_id;
+            }
+        }
+
+        if (min_fill_id < 0)
+        {
+            throw Exception("min_fill_id < 0");
+        }
+        else
+        {
+            sample->id = min_fill_id;
+            sample_ids.push_back(sample->id);
+        }
+    }
+    else if (params.class_probability_all_int)
+    {
+        sample->id = static_cast<int>(floor(Random::UniformRandom() *
+                                            priority_group.classes.size())) %
+                     priority_group.classes.size();
+        sample->id = priority_group.classes[sample->id];
+        sample_ids.push_back(sample->id);
+    }
+    else
+    {
+        if (context.priority_groups.size() != 1)
+        {
+            throw Exception("priority_groups.size() != 1");
+        }
+
+        sample->id = RandomClass(params.class_probability);
+        sample_ids.push_back(sample->id);
+    }
+
+#ifdef DEBUG // useful debug
+    cerr << "num_samples_per_class :";
+            for (unsigned int i = 0; i < num_samples_per_class.size(); i++)
+            {
+                cerr << " " << num_samples_per_class[i];
+            }
+            cerr << " "; // << endl;
+            cerr << "throw sample in class " << sample->id << endl;
+#endif
+
+    if (sample->coordinate.Dimension() !=
+        params.grid_domain_spec.domain_size.size())
+    {
+        throw Exception(
+                "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
+    }
+
+    vector<float> sample_domain_min_corner(params.dimension);
+    vector<float> sample_domain_max_corner(params.dimension);
+
+    const int has_tried_hard_enough =
+            (current_failures_per_class[sample->id] >
+             params.patience_factor * params.target_num_samples_per_class[sample->id]);
+
+    for (int i = 0; i < params.dimension; i++)
+    {
+        sample_domain_min_corner[i] = 0;
+        sample_domain_max_corner[i] =
+                params.grid_domain_spec.domain_size[i] * params.grid_domain_spec.cell_size;
+    }
+
+    for (int i = 0; i < sample->coordinate.Dimension(); i++)
+    {
+        sample->coordinate[i] =
+                Random::UniformRandom() *
+                (sample_domain_max_corner[i] - sample_domain_min_corner[i]) +
+                sample_domain_min_corner[i];
+    }
+
+    if (sample_ids.size() <= 0)
+    {
+        throw Exception("sample_ids.size() <= 0");
+    }
+
+    SampleRecord::Status sample_fate = SampleRecord::UNKNOWN;
+
+    for (unsigned int which_id = 0; (which_id < sample_ids.size()) &&
+                                    (sample_fate != SampleRecord::ACCEPTED);
+         which_id++)
+    {
+        sample->id = sample_ids[which_id];
+
+        if (!params.grid->Inside(*sample))
+        {
+            sample_fate = SampleRecord::OUTSIDE;
+        }
+        else if (!params.grid->Conflict(*sample, *params.conflict_checker))
+        {
+            sample_fate = SampleRecord::ACCEPTED;
+        }
+        else // has conflict
+        {
+            sample_fate = SampleRecord::REJECTED;
+
+#ifdef DEBUG
+            if (current_failures_per_class[sample->id] > 0) // debug
+                    {
+                        cerr << "current_failures_per_class[" << sample->id
+                             << "]: " << current_failures_per_class[sample->id] << endl;
+                    }
+#endif
+
+            if ((params.k_number == 0) && has_tried_hard_enough)
+            {
+                // cerr << "try killing" << endl; // debug
+                vector<const Sample *> neighbors;
+                if (!params.grid->GetConflicts(*sample, *params.conflict_checker, neighbors))
+                {
+                    throw Exception("cannot get conflicts");
+                }
+
+                int neighbors_all_removable = 1;
+
+                const float sample_fill_ratio =
+                        num_samples_per_class[sample->id] * 1.0 /
+                        params.target_num_samples_per_class[sample->id];
+                float sample_r_value = 0;
+                params.r_matrix.Get(vector<int>(2, sample->id), sample_r_value);
+
+                for (unsigned int j = 0; j < neighbors.size(); j++)
+                {
+                    const Sample &current_neighbor = *neighbors[j];
+
+                    float neighbor_r_value = 0;
+                    params.r_matrix.Get(vector<int>(2, current_neighbor.id),
+                                        neighbor_r_value);
+
+                    if (neighbor_r_value >= sample_r_value)
+                    {
+                        neighbors_all_removable = 0;
+                        break;
+                    }
+
+                    float current_neighbor_fill_ratio = 0;
+
+                    for (unsigned int i = 0; i < priority_group.classes.size(); i++)
+                    {
+                        const int current_id = priority_group.classes[i];
+                        if (current_neighbor.id == current_id)
+                        {
+                            current_neighbor_fill_ratio =
+                                    num_samples_per_class[current_id] * 1.0 /
+                                    params.target_num_samples_per_class[current_id];
+                        }
+                    }
+
+                    if ((current_neighbor_fill_ratio <= 0) ||
+                        (current_neighbor_fill_ratio < sample_fill_ratio))
+                    {
+                        neighbors_all_removable = 0;
+                        break;
+                    }
+                }
+
+                if (neighbors_all_removable)
+                {
+                    for (unsigned int j = 0; j < neighbors.size(); j++)
+                    {
+                        if (!params.grid->Remove(*neighbors[j]))
+                        {
+                            throw Exception("cannot remove neighbor");
+                        }
+                        num_samples--;
+                        total_num_samples--;
+                        num_samples_per_class[neighbors[j]->id] -= 1;
+
+#ifdef _RECORD_SAMPLE_HISTORY
+                        const SampleRecord new_record(neighbors[j]->id,
+                                                              SampleRecord::KILLED);
+                                sample_history.push_back(new_record);
+#endif
+
+                        delete neighbors[j];
+                    }
+
+                    neighbors.clear();
+                    if (!params.grid->Conflict(*sample, *params.conflict_checker))
+                    {
+                        sample_fate = SampleRecord::ACCEPTED;
+                    }
+                    else
+                    {
+                        throw Exception("still conflict after removing neighbors");
+                    }
+                }
+                else
+                {
+                    // cerr << "cannot remove neighbors" << endl; // debug
+                }
+            }
+        }
+
+        if (sample_fate == SampleRecord::ACCEPTED)
+        {
+            current_failures_per_class[sample->id] = 0;
+        }
+        else
+        {
+            current_failures_per_class[sample->id] += 1;
+        }
+
+        switch (sample_fate)
+        {
+            case SampleRecord::ACCEPTED:
+            {
+#ifdef _RECORD_SAMPLE_HISTORY
+                const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
+                    sample_history.push_back(new_record);
+#endif
+                if (!params.grid->Add(*sample))
+                {
+                    throw Exception("cannot add sample");
+                    delete sample;
+                    sample = 0;
+                }
+                else
+                {
+                    num_samples++;
+                    total_num_samples++;
+                    num_samples_per_class[sample->id] += 1;
+                    sample = 0;
+                }
+                break;
+            }
+
+            case SampleRecord::REJECTED:
+            {
+#ifdef _RECORD_SAMPLE_HISTORY
+                const SampleRecord new_record(sample->id, SampleRecord::REJECTED);
+                    sample_history.push_back(new_record);
+#endif
+                break;
+            }
+
+            case SampleRecord::OUTSIDE:
+                // do nothing
+                break;
+
+            default:
+                throw Exception("unknown sample fate");
+                break;
+        }
+    }
+
+    if (sample != 0)
+    {
+        delete sample;
+        sample = 0;
+    }
+}
+
+vector<const Sample *> play(MulticlassParameters &params, SamplingContext &context)
+{
+    // Initialize random number engine
     const unsigned long random_seed = time(0);
-    // cerr << "random seed: " << random_seed << endl;
     Random::InitRandomNumberGenerator(random_seed);
 
-    int total_num_samples = 0;
-    vector<int> num_samples_per_class(params.num_classes, 0);
-    vector<int> current_failures_per_class(params.num_classes, 0);
+    // Initialize algorithm context
+    context.priority_groups = BuildPriorityGroups(
+            params.dimension, params.priority_values, params.r_matrix, params.num_trials, params.target_num_samples);
+    context.total_num_samples = 0;
+    context.num_samples_per_class = vector<int>(params.num_classes, 0);
+    context.current_failures_per_class = vector<int>(params.num_classes, 0);
 
 #ifdef _RECORD_SAMPLE_HISTORY
     // record class numbers for each sample drawn
     vector<SampleRecord> sample_history;
 #endif
 
-    vector<int> subdividable(params.num_classes, 1);
-
     Timer timer;
 
     timer.Start();
 
     for (unsigned int which_priority_group = 0;
-         which_priority_group < priority_groups.size(); which_priority_group++)
+         which_priority_group < context.priority_groups.size(); which_priority_group++)
     {
-        const PriorityGroup &priority_group = priority_groups[which_priority_group];
+        const PriorityGroup &priority_group = context.priority_groups[which_priority_group];
 
 #ifdef DEBUG
         cerr << "classes: (";
@@ -458,7 +755,7 @@ vector<const Sample *> play(MulticlassParameters &params)
         int num_samples = 0;
         for (unsigned int i = 0; i < priority_group.classes.size(); i++)
         {
-            num_samples += num_samples_per_class[priority_group.classes[i]];
+            num_samples += context.num_samples_per_class[priority_group.classes[i]];
         }
 
         for (int trial = 0;
@@ -466,292 +763,7 @@ vector<const Sample *> play(MulticlassParameters &params)
              ((params.k_number <= 0) && (num_samples < priority_group.target_num_samples));
              trial++)
         {
-            Sample *sample = new Sample(params.dimension);
-
-            if (priority_group.classes.size() <= 0)
-            {
-                throw Exception("priority_group.classes.size() <= 0");
-            }
-
-            vector<int> sample_ids;
-
-            if (params.k_number == 0)
-            {
-                // pick the most under filled class
-                float min_fill_ratio = 2.0;
-                int min_fill_id = -1;
-
-                for (unsigned int i = 0; i < priority_group.classes.size(); i++)
-                {
-                    const int current_id = priority_group.classes[i];
-                    const float fill_ratio = num_samples_per_class[current_id] * 1.0 /
-                                             params.target_num_samples_per_class[current_id];
-                    if (min_fill_ratio >= fill_ratio)
-                    {
-                        min_fill_ratio = fill_ratio;
-                        min_fill_id = current_id;
-                    }
-                }
-
-                if (min_fill_id < 0)
-                {
-                    throw Exception("min_fill_id < 0");
-                }
-                else
-                {
-                    sample->id = min_fill_id;
-                    sample_ids.push_back(sample->id);
-                }
-            }
-            else if (params.class_probability_all_int)
-            {
-                sample->id = static_cast<int>(floor(Random::UniformRandom() *
-                                                    priority_group.classes.size())) %
-                             priority_group.classes.size();
-                sample->id = priority_group.classes[sample->id];
-                sample_ids.push_back(sample->id);
-            }
-            else
-            {
-                if (priority_groups.size() != 1)
-                {
-                    throw Exception("priority_groups.size() != 1");
-                }
-
-                sample->id = RandomClass(params.class_probability);
-                sample_ids.push_back(sample->id);
-            }
-
-            // while((target_num_samples_per_class[sample->id] > 0) &&
-            // (num_samples_per_class[sample->id] >=
-            // target_num_samples_per_class[sample->id]));
-
-#ifdef DEBUG // useful debug
-            cerr << "num_samples_per_class :";
-            for (unsigned int i = 0; i < num_samples_per_class.size(); i++)
-            {
-                cerr << " " << num_samples_per_class[i];
-            }
-            cerr << " "; // << endl;
-            cerr << "throw sample in class " << sample->id << endl;
-#endif
-
-            if (sample->coordinate.Dimension() !=
-                params.grid_domain_spec.domain_size.size())
-            {
-                throw Exception(
-                        "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
-            }
-
-            vector<float> sample_domain_min_corner(params.dimension);
-            vector<float> sample_domain_max_corner(params.dimension);
-
-            const int has_tried_hard_enough =
-                    (current_failures_per_class[sample->id] >
-                     params.patience_factor * params.target_num_samples_per_class[sample->id]);
-            // const int has_tried_hard_enough =
-            // (current_failures_per_class[sample->id] >
-            // patience_factor*total_num_grid_cells);
-
-            for (int i = 0; i < params.dimension; i++)
-            {
-                sample_domain_min_corner[i] = 0;
-                sample_domain_max_corner[i] =
-                        params.grid_domain_spec.domain_size[i] * params.grid_domain_spec.cell_size;
-            }
-
-            for (int i = 0; i < sample->coordinate.Dimension(); i++)
-            {
-                sample->coordinate[i] =
-                        Random::UniformRandom() *
-                        (sample_domain_max_corner[i] - sample_domain_min_corner[i]) +
-                        sample_domain_min_corner[i];
-            }
-
-            // if(Random::UniformRandom() < 1.5) sample->coordinate[0] =
-            // 2*sample_domain_max_corner[0]; // debug, put the sample outside the
-            // domain
-
-            if (sample_ids.size() <= 0)
-            {
-                throw Exception("sample_ids.size() <= 0");
-            }
-
-            SampleRecord::Status sample_fate = SampleRecord::UNKNOWN;
-
-            for (unsigned int which_id = 0; (which_id < sample_ids.size()) &&
-                                            (sample_fate != SampleRecord::ACCEPTED);
-                 which_id++)
-            {
-                sample->id = sample_ids[which_id];
-
-                if (!params.grid->Inside(*sample))
-                {
-                    sample_fate = SampleRecord::OUTSIDE;
-                }
-                else if (!params.grid->Conflict(*sample, *params.conflict_checker))
-                {
-                    sample_fate = SampleRecord::ACCEPTED;
-                }
-                else // has conflict
-                {
-                    sample_fate = SampleRecord::REJECTED;
-
-#ifdef DEBUG
-                    if (current_failures_per_class[sample->id] > 0) // debug
-                    {
-                        cerr << "current_failures_per_class[" << sample->id
-                             << "]: " << current_failures_per_class[sample->id] << endl;
-                    }
-#endif
-
-                    if ((params.k_number == 0) && has_tried_hard_enough)
-                    {
-                        // cerr << "try killing" << endl; // debug
-                        vector<const Sample *> neighbors;
-                        if (!params.grid->GetConflicts(*sample, *params.conflict_checker, neighbors))
-                        {
-                            throw Exception("cannot get conflicts");
-                        }
-
-                        int neighbors_all_removable = 1;
-
-                        const float sample_fill_ratio =
-                                num_samples_per_class[sample->id] * 1.0 /
-                                params.target_num_samples_per_class[sample->id];
-                        float sample_r_value = 0;
-                        params.r_matrix.Get(vector<int>(2, sample->id), sample_r_value);
-
-                        for (unsigned int j = 0; j < neighbors.size(); j++)
-                        {
-                            const Sample &current_neighbor = *neighbors[j];
-
-                            float neighbor_r_value = 0;
-                            params.r_matrix.Get(vector<int>(2, current_neighbor.id),
-                                                neighbor_r_value);
-
-                            if (neighbor_r_value >= sample_r_value)
-                            {
-                                neighbors_all_removable = 0;
-                                break;
-                            }
-
-                            float current_neighbor_fill_ratio = 0;
-
-                            for (unsigned int i = 0; i < priority_group.classes.size(); i++)
-                            {
-                                const int current_id = priority_group.classes[i];
-                                if (current_neighbor.id == current_id)
-                                {
-                                    current_neighbor_fill_ratio =
-                                            num_samples_per_class[current_id] * 1.0 /
-                                            params.target_num_samples_per_class[current_id];
-                                }
-                            }
-
-                            if ((current_neighbor_fill_ratio <= 0) ||
-                                (current_neighbor_fill_ratio < sample_fill_ratio))
-                            {
-                                neighbors_all_removable = 0;
-                                break;
-                            }
-                        }
-
-                        if (neighbors_all_removable)
-                        {
-                            for (unsigned int j = 0; j < neighbors.size(); j++)
-                            {
-                                if (!params.grid->Remove(*neighbors[j]))
-                                {
-                                    throw Exception("cannot remove neighbor");
-                                }
-                                num_samples--;
-                                total_num_samples--;
-                                num_samples_per_class[neighbors[j]->id] -= 1;
-
-#ifdef _RECORD_SAMPLE_HISTORY
-                                const SampleRecord new_record(neighbors[j]->id,
-                                                              SampleRecord::KILLED);
-                                sample_history.push_back(new_record);
-#endif
-
-                                delete neighbors[j];
-                            }
-
-                            neighbors.clear();
-                            if (!params.grid->Conflict(*sample, *params.conflict_checker))
-                            {
-                                sample_fate = SampleRecord::ACCEPTED;
-                            }
-                            else
-                            {
-                                throw Exception("still conflict after removing neighbors");
-                            }
-                        }
-                        else
-                        {
-                            // cerr << "cannot remove neighbors" << endl; // debug
-                        }
-                    }
-                }
-
-                if (sample_fate == SampleRecord::ACCEPTED)
-                {
-                    current_failures_per_class[sample->id] = 0;
-                }
-                else
-                {
-                    current_failures_per_class[sample->id] += 1;
-                }
-
-                switch (sample_fate)
-                {
-                    case SampleRecord::ACCEPTED:
-                    {
-#ifdef _RECORD_SAMPLE_HISTORY
-                        const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
-                    sample_history.push_back(new_record);
-#endif
-                        if (!params.grid->Add(*sample))
-                        {
-                            throw Exception("cannot add sample");
-                            delete sample;
-                            sample = 0;
-                        }
-                        else
-                        {
-                            num_samples++;
-                            total_num_samples++;
-                            num_samples_per_class[sample->id] += 1;
-                            sample = 0;
-                        }
-                        break;
-                    }
-
-                    case SampleRecord::REJECTED:
-                    {
-#ifdef _RECORD_SAMPLE_HISTORY
-                        const SampleRecord new_record(sample->id, SampleRecord::REJECTED);
-                    sample_history.push_back(new_record);
-#endif
-                        break;
-                    }
-
-                    case SampleRecord::OUTSIDE:
-                        // do nothing
-                        break;
-
-                    default:
-                        throw Exception("unknown sample fate");
-                        break;
-                }
-            }
-
-            if (sample != 0)
-            {
-                delete sample;
-                sample = 0;
-            }
+            generateSample(params, context, num_samples, which_priority_group);
         }
     }
 
@@ -763,7 +775,7 @@ vector<const Sample *> play(MulticlassParameters &params)
     vector<const Sample *> samples;
     params.grid->GetSamples(samples);
 
-    if (total_num_samples != samples.size())
+    if (context.total_num_samples != samples.size())
     {
         throw Exception("total_num_samples != samples.size()");
     }
@@ -785,13 +797,6 @@ vector<const Sample *> play(MulticlassParameters &params)
 #endif
 
     cerr << "# samples per second " << samples.size() / total_time << endl;
-
-    // clean up
-    for (unsigned int i = 0; i < samples.size(); i++)
-    {
-        delete samples[i];
-    }
-    samples.clear();
 
     // done
     return samples;
