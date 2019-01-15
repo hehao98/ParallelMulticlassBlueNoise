@@ -33,6 +33,7 @@ using namespace std;
 #include "SampleRecord.hpp"
 
 //#define DEBUG
+//#define _RECORD_SAMPLE_HISTORY
 
 int RandomClass(const vector<float> &cdf)
 {
@@ -108,8 +109,6 @@ int main(int argc, char **argv)
 
         Timer timer;
         timer.Start();
-
-        //setDomainSize(*params, vector<float>(2, 50));
 
         // Run the algorithm
         vector<const Sample *> samples = play(*params, *context);
@@ -741,6 +740,7 @@ vector<const Sample *> play(MulticlassParameters &params,
     cerr << samples.size() << " samples" << endl;
 
 #ifdef _RECORD_SAMPLE_HISTORY
+    const char *history_file_name = "../testdata/history.txt";
     if (history_file_name)
     {
         if (!WriteSampleHistory(history_file_name, sample_history))

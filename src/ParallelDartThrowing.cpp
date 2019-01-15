@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <thread>
+#include <future>
 
 using namespace std;
 
@@ -33,6 +35,7 @@ using namespace std;
 #include "SampleRecord.hpp"
 
 //#define DEBUG
+//#define _RECORD_SAMPLE_HISTORY
 
 int RandomClass(const vector<float> &cdf)
 {
@@ -57,7 +60,7 @@ int RandomClass(const vector<float> &cdf)
 
 struct MulticlassParameters
 {
-    // Values calculated from input
+    // Values calculated from input paramters
     int dimension;
     int num_classes;
     int class_probability_all_int;
@@ -68,12 +71,12 @@ struct MulticlassParameters
     float patience_factor;
     int k_number;
     vector<float> domain_size;
+    float min_r_value;
 
+    // Sample domain related information
     UniformConflictChecker *conflict_checker;
     Grid::DomainSpec grid_domain_spec;
     Grid *grid;
-    float min_r_value;
-
     int num_trials;
     int target_num_samples;
     vector<int> target_num_samples_per_class;
@@ -87,17 +90,21 @@ struct SamplingContext
     vector<int> current_failures_per_class;
 };
 
+void work(int offsetX, int offsetY, vector<float> sub_domain_size);
 int parseInput(MulticlassParameters &params, int argc, char **argv);
-vector<const Sample *> play(MulticlassParameters &params,
+int setDomainSize(MulticlassParameters &params, vector<float> domain_size_spec);
+vector<Sample *> play(MulticlassParameters &params,
                             SamplingContext &context);
+
+MulticlassParameters *params = new MulticlassParameters();
+SamplingContext *context = new SamplingContext();
+vector<Sample *> finalSamples;
+std::mutex finalSampleMutex;
 
 int main(int argc, char **argv)
 {
     try
     {
-        MulticlassParameters *params = new MulticlassParameters();
-        SamplingContext *context = new SamplingContext();
-
         // Get parameters from input
         if (parseInput(*params, argc, argv) < 0)
         {
@@ -105,25 +112,50 @@ int main(int argc, char **argv)
             return 1;
         }
 
+        Timer timer;
+        timer.Start();
+
+        vector<float> sub_domain_size = params->domain_size;
+        for (int i = 0; i < sub_domain_size.size(); ++i) {
+            sub_domain_size[i] /= 2;
+        }
+
         // Run the algorithm
-        vector<const Sample *> samples = play(*params, *context);
+        vector<std::thread *> threads;
+        for (float offsetX = 0; offsetX < params->domain_size[0]; offsetX += sub_domain_size[0])
+        {
+            for (float offsetY = 0; offsetY < params->domain_size[1]; offsetY += sub_domain_size[1])
+            {
+                thread *t = new std::thread(work, offsetX, offsetY, sub_domain_size);
+                threads.push_back(t);
+            }
+        }
+        for (int i = 0; i < threads.size(); ++i) {
+            threads[i]->join();
+            delete threads[i];
+        }
+
+        timer.Stop();
+        const double total_time = timer.ElapsedTime();
+        cerr << "total time " << total_time << endl;
+        cerr << "# samples per second " << finalSamples.size() / total_time << endl;
 
         // Output result
-        for (unsigned int i = 0; i < samples.size(); i++)
+        for (unsigned int i = 0; i < finalSamples.size(); i++)
         {
-            cout << samples[i]->id;
-            for (int j = 0; j < samples[i]->coordinate.Dimension(); j++)
+            cout << finalSamples[i]->id;
+            for (int j = 0; j < finalSamples[i]->coordinate.Dimension(); j++)
             {
-                cout << " " << samples[i]->coordinate[j];
+                cout << " " << finalSamples[i]->coordinate[j];
             }
             cout << endl;
         }
 
         // Clean up
-        for (auto &sample : samples) {
+        for (auto &sample : finalSamples) {
             delete sample;
         }
-        samples.clear();
+        finalSamples.clear();
         delete params;
         delete context;
         return 0;
@@ -132,6 +164,53 @@ int main(int argc, char **argv)
     {
         cerr << "Error: " << e.Message() << endl;
         return 1;
+    }
+}
+
+void work(int offsetX, int offsetY, vector<float> sub_domain_size)
+{
+    try
+    {
+        MulticlassParameters *mp = new MulticlassParameters();
+
+        mp->dimension = params->dimension;
+        mp->num_classes = params->num_classes;
+        mp->class_probability_all_int = params->class_probability_all_int;
+        mp->class_probability = params->class_probability;
+        mp->priority_values = params->priority_values;
+        mp->r_values = params->r_values;
+        mp->r_matrix = params->r_matrix;
+        mp->patience_factor = params->patience_factor;
+        mp->k_number = params->k_number;
+        mp->domain_size = params->domain_size;
+        mp->min_r_value = params->min_r_value;
+
+        setDomainSize(*mp, sub_domain_size);
+
+        SamplingContext *sc = new SamplingContext();
+        vector<Sample *> samples = play(*mp, *sc);
+
+        for (int i = 0; i < samples.size(); ++i)
+        {
+            samples[i]->coordinate[0] += offsetX;
+            samples[i]->coordinate[1] += offsetY;
+        }
+
+        finalSampleMutex.lock();
+        for (int i = 0; i < samples.size(); ++i)
+        {
+            finalSamples.push_back(samples[i]);
+        }
+        finalSampleMutex.unlock();
+
+        delete mp;
+        delete sc;
+        return;
+    }
+    catch (Exception &e)
+    {
+        cerr << "Error: " << e.Message() << endl;
+        return;
     }
 }
 
@@ -292,7 +371,6 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
     params.class_probability = class_probability;
     params.priority_values = priority_values;
     params.patience_factor = patience_factor;
-    params.conflict_checker = new UniformConflictChecker(params.r_matrix);
 
     float min_r_value = params.r_values[0];
     for (unsigned int i = 0; i < params.r_values.size(); i++)
@@ -332,10 +410,18 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
     }
     params.domain_size = domain_size_spec;
 
-    params.grid_domain_spec = Grid::BuildDomainSpec(domain_size_spec);
-    params.grid = new Grid(params.grid_domain_spec, min_r_value);
+    setDomainSize(params, domain_size_spec);
 
-    int num_trials = k_number;
+    return 0;
+}
+
+int setDomainSize(MulticlassParameters &params, vector<float> domain_size_spec)
+{
+    params.conflict_checker = new UniformConflictChecker(params.r_matrix);
+    params.grid_domain_spec = Grid::BuildDomainSpec(domain_size_spec);
+    params.grid = new Grid(params.grid_domain_spec, params.min_r_value);
+
+    int num_trials = params.k_number;
     int total_num_grid_cells = 1;
     {
         Grid grid_local(params.grid_domain_spec, params.min_r_value);
@@ -347,7 +433,7 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
         }
     }
 
-    int target_num_samples = -k_number;
+    int target_num_samples = -params.k_number;
 
     vector<int> target_num_samples_per_class(params.num_classes, 0);
 
@@ -363,7 +449,6 @@ int parseInput(MulticlassParameters &params, int argc, char **argv)
     params.num_trials = num_trials;
     params.target_num_samples = target_num_samples;
     params.target_num_samples_per_class = target_num_samples_per_class;
-
     return 0;
 }
 
@@ -655,7 +740,7 @@ void generateSample(MulticlassParameters &params, SamplingContext &context,
     }
 }
 
-vector<const Sample *> play(MulticlassParameters &params,
+vector<Sample *> play(MulticlassParameters &params,
                             SamplingContext &context)
 {
     // Initialize random number engine
@@ -675,9 +760,7 @@ vector<const Sample *> play(MulticlassParameters &params,
     vector<SampleRecord> sample_history;
 #endif
 
-    Timer timer;
 
-    timer.Start();
 
     for (unsigned int which_priority_group = 0;
          which_priority_group < context.priority_groups.size();
@@ -713,9 +796,7 @@ vector<const Sample *> play(MulticlassParameters &params,
         }
     }
 
-    timer.Stop();
-    const double total_time = timer.ElapsedTime();
-    cerr << "total time " << total_time << endl;
+
 
     // output
     vector<const Sample *> samples;
@@ -729,6 +810,7 @@ vector<const Sample *> play(MulticlassParameters &params,
     cerr << samples.size() << " samples" << endl;
 
 #ifdef _RECORD_SAMPLE_HISTORY
+    const char *history_file_name = "../testdata/history.txt";
     if (history_file_name)
     {
         if (!WriteSampleHistory(history_file_name, sample_history))
@@ -742,8 +824,11 @@ vector<const Sample *> play(MulticlassParameters &params,
     }
 #endif
 
-    cerr << "# samples per second " << samples.size() / total_time << endl;
+    vector<Sample *> result;
+    for (int i = 0; i < samples.size(); ++i) {
+        result.push_back((Sample*)samples[i]);
+    }
 
     // done
-    return samples;
+    return result;
 }
