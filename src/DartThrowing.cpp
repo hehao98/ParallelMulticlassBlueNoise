@@ -32,41 +32,7 @@ using namespace std;
 
 #include "SampleRecord.hpp"
 
-//#define DEBUG
-
-struct Sortee
-{
-    Sortee(void) : id(0), value(0){};
-    Sortee(const int id_i, const float value_i) : id(id_i), value(value_i){};
-
-    int operator<(const Sortee &another) const
-    {
-        return (value < another.value);
-    };
-
-    int id;
-    float value;
-};
-
-int Inferior(const vector<int> &vec1, const vector<int> &vec2,
-             const vector<int> &classes)
-{
-    int inferior = 0;
-
-    if (vec1.size() != vec2.size())
-    {
-        throw Exception("vec1.size() != vec2.size()");
-    }
-
-    for (unsigned int i = 0; i < classes.size(); i++)
-    {
-        const int class_id = classes[i];
-        if (vec1[class_id] < vec2[class_id])
-            inferior = 1;
-    }
-
-    return inferior;
-}
+#define DEBUG
 
 int RandomClass(const vector<float> &cdf)
 {
@@ -110,6 +76,43 @@ struct MulticlassParameters {
     int target_num_samples;
     vector<int> target_num_samples_per_class;
 };
+
+int parseInput(MulticlassParameters &params, int argc, char** argv);
+vector<const Sample *> play(MulticlassParameters &params);
+
+int main(int argc, char **argv)
+{
+    try
+    {
+        MulticlassParameters params;
+
+        // Get parameters from input
+        if (parseInput(params, argc, argv) < 0) {
+            cerr << "Something wrong with input, quiting..." << std::endl;
+            return 1;
+        }
+
+        // Run the algorithm
+        vector<const Sample *> samples = play(params);
+
+        // Output result
+        for (unsigned int i = 0; i < samples.size(); i++)
+        {
+            cout << samples[i]->id;
+            for (int j = 0; j < samples[i]->coordinate.Dimension(); j++)
+            {
+                cout << " " << samples[i]->coordinate[j];
+            }
+            cout << endl;
+        }
+        return 0;
+    }
+    catch(Exception e)
+    {
+        cerr << "Error: " << e.Message() << endl;
+        return 1;
+    }
+}
 
 int parseInput(MulticlassParameters &params, int argc, char** argv) {
     // input arguments
@@ -412,18 +415,10 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     return 0;
 }
 
-int Main(int argc, char **argv)
+vector<const Sample *> play(MulticlassParameters &params)
 {
-    MulticlassParameters params;
-
-    if (parseInput(params, argc, argv) < 0) {
-        cerr << "Something wrong with input, quiting..." << std::endl;
-        return 1;
-    }
-
-    // play
     vector<PriorityGroup> priority_groups = BuildPriorityGroups(
-        params.dimension, params.priority_values, params.r_matrix, params.num_trials,params.target_num_samples);
+            params.dimension, params.priority_values, params.r_matrix, params.num_trials, params.target_num_samples);
 
     const unsigned long random_seed = time(0);
     // cerr << "random seed: " << random_seed << endl;
@@ -449,24 +444,21 @@ int Main(int argc, char **argv)
     {
         const PriorityGroup &priority_group = priority_groups[which_priority_group];
 
-        if (0) // debug
+#ifdef DEBUG
+        cerr << "classes: (";
+        for (unsigned int i = 0; i < priority_group.classes.size(); i++)
         {
-            cerr << "classes: (";
-            for (unsigned int i = 0; i < priority_group.classes.size(); i++)
-            {
-                cerr << priority_group.classes[i] << " ";
-            }
-            cerr << "), k_number: " << params.k_number
-                 << ", num_trials: " << priority_group.num_trials
-                 << ", num_samples: " << priority_group.target_num_samples << endl;
+            cerr << priority_group.classes[i] << " ";
         }
+        cerr << "), k_number: " << params.k_number
+             << ", num_trials: " << priority_group.num_trials
+             << ", num_samples: " << priority_group.target_num_samples << endl;
+#endif
 
         int num_samples = 0;
+        for (unsigned int i = 0; i < priority_group.classes.size(); i++)
         {
-            for (unsigned int i = 0; i < priority_group.classes.size(); i++)
-            {
-                num_samples += num_samples_per_class[priority_group.classes[i]];
-            }
+            num_samples += num_samples_per_class[priority_group.classes[i]];
         }
 
         for (int trial = 0;
@@ -548,15 +540,15 @@ int Main(int argc, char **argv)
                 params.grid_domain_spec.domain_size.size())
             {
                 throw Exception(
-                    "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
+                        "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
             }
 
             vector<float> sample_domain_min_corner(params.dimension);
             vector<float> sample_domain_max_corner(params.dimension);
 
             const int has_tried_hard_enough =
-                (current_failures_per_class[sample->id] >
-                 params.patience_factor * params.target_num_samples_per_class[sample->id]);
+                    (current_failures_per_class[sample->id] >
+                     params.patience_factor * params.target_num_samples_per_class[sample->id]);
             // const int has_tried_hard_enough =
             // (current_failures_per_class[sample->id] >
             // patience_factor*total_num_grid_cells);
@@ -565,15 +557,15 @@ int Main(int argc, char **argv)
             {
                 sample_domain_min_corner[i] = 0;
                 sample_domain_max_corner[i] =
-                    params.grid_domain_spec.domain_size[i] * params.grid_domain_spec.cell_size;
+                        params.grid_domain_spec.domain_size[i] * params.grid_domain_spec.cell_size;
             }
 
             for (int i = 0; i < sample->coordinate.Dimension(); i++)
             {
                 sample->coordinate[i] =
-                    Random::UniformRandom() *
+                        Random::UniformRandom() *
                         (sample_domain_max_corner[i] - sample_domain_min_corner[i]) +
-                    sample_domain_min_corner[i];
+                        sample_domain_min_corner[i];
             }
 
             // if(Random::UniformRandom() < 1.5) sample->coordinate[0] =
@@ -625,8 +617,8 @@ int Main(int argc, char **argv)
                         int neighbors_all_removable = 1;
 
                         const float sample_fill_ratio =
-                            num_samples_per_class[sample->id] * 1.0 /
-                            params.target_num_samples_per_class[sample->id];
+                                num_samples_per_class[sample->id] * 1.0 /
+                                params.target_num_samples_per_class[sample->id];
                         float sample_r_value = 0;
                         params.r_matrix.Get(vector<int>(2, sample->id), sample_r_value);
 
@@ -636,7 +628,7 @@ int Main(int argc, char **argv)
 
                             float neighbor_r_value = 0;
                             params.r_matrix.Get(vector<int>(2, current_neighbor.id),
-                                         neighbor_r_value);
+                                                neighbor_r_value);
 
                             if (neighbor_r_value >= sample_r_value)
                             {
@@ -652,8 +644,8 @@ int Main(int argc, char **argv)
                                 if (current_neighbor.id == current_id)
                                 {
                                     current_neighbor_fill_ratio =
-                                        num_samples_per_class[current_id] * 1.0 /
-                                        params.target_num_samples_per_class[current_id];
+                                            num_samples_per_class[current_id] * 1.0 /
+                                            params.target_num_samples_per_class[current_id];
                                 }
                             }
 
@@ -714,44 +706,44 @@ int Main(int argc, char **argv)
 
                 switch (sample_fate)
                 {
-                case SampleRecord::ACCEPTED:
-                {
+                    case SampleRecord::ACCEPTED:
+                    {
 #ifdef _RECORD_SAMPLE_HISTORY
-                    const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
+                        const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
                     sample_history.push_back(new_record);
 #endif
-                    if (!params.grid->Add(*sample))
-                    {
-                        throw Exception("cannot add sample");
-                        delete sample;
-                        sample = 0;
+                        if (!params.grid->Add(*sample))
+                        {
+                            throw Exception("cannot add sample");
+                            delete sample;
+                            sample = 0;
+                        }
+                        else
+                        {
+                            num_samples++;
+                            total_num_samples++;
+                            num_samples_per_class[sample->id] += 1;
+                            sample = 0;
+                        }
+                        break;
                     }
-                    else
-                    {
-                        num_samples++;
-                        total_num_samples++;
-                        num_samples_per_class[sample->id] += 1;
-                        sample = 0;
-                    }
-                    break;
-                }
 
-                case SampleRecord::REJECTED:
-                {
+                    case SampleRecord::REJECTED:
+                    {
 #ifdef _RECORD_SAMPLE_HISTORY
-                    const SampleRecord new_record(sample->id, SampleRecord::REJECTED);
+                        const SampleRecord new_record(sample->id, SampleRecord::REJECTED);
                     sample_history.push_back(new_record);
 #endif
-                    break;
-                }
+                        break;
+                    }
 
-                case SampleRecord::OUTSIDE:
-                    // do nothing
-                    break;
+                    case SampleRecord::OUTSIDE:
+                        // do nothing
+                        break;
 
-                default:
-                    throw Exception("unknown sample fate");
-                    break;
+                    default:
+                        throw Exception("unknown sample fate");
+                        break;
                 }
             }
 
@@ -777,15 +769,6 @@ int Main(int argc, char **argv)
     }
 
     cerr << samples.size() << " samples" << endl;
-    for (unsigned int i = 0; i < samples.size(); i++)
-    {
-        cout << samples[i]->id;
-        for (int j = 0; j < samples[i]->coordinate.Dimension(); j++)
-        {
-            cout << " " << samples[i]->coordinate[j];
-        }
-        cout << endl;
-    }
 
 #ifdef _RECORD_SAMPLE_HISTORY
     if (history_file_name)
@@ -811,18 +794,5 @@ int Main(int argc, char **argv)
     samples.clear();
 
     // done
-    return 0;
-}
-
-int main(int argc, char **argv)
-{
-    try
-    {
-        return Main(argc, argv);
-    }
-    catch(Exception e)
-    {
-        cerr << "Error: " << e.Message() << endl;
-        return 1;
-    }
+    return samples;
 }
