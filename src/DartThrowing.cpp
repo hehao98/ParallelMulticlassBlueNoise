@@ -55,7 +55,8 @@ int RandomClass(const vector<float> &cdf)
     return selection % cdf.size();
 }
 
-struct MulticlassParameters {
+struct MulticlassParameters
+{
     int dimension;
     int num_classes;
     int class_probability_all_int;
@@ -76,15 +77,17 @@ struct MulticlassParameters {
     vector<int> target_num_samples_per_class;
 };
 
-struct SamplingContext {
+struct SamplingContext
+{
     vector<PriorityGroup> priority_groups;
     int total_num_samples;
     vector<int> num_samples_per_class;
     vector<int> current_failures_per_class;
 };
 
-int parseInput(MulticlassParameters &params, int argc, char** argv);
-vector<const Sample *> play(MulticlassParameters &params, SamplingContext &context);
+int parseInput(MulticlassParameters &params, int argc, char **argv);
+vector<const Sample *> play(MulticlassParameters &params,
+                            SamplingContext &context);
 
 int main(int argc, char **argv)
 {
@@ -94,7 +97,8 @@ int main(int argc, char **argv)
         SamplingContext *context = new SamplingContext();
 
         // Get parameters from input
-        if (parseInput(*params, argc, argv) < 0) {
+        if (parseInput(*params, argc, argv) < 0)
+        {
             cerr << "Something wrong with input, quiting..." << std::endl;
             return 1;
         }
@@ -114,23 +118,23 @@ int main(int argc, char **argv)
         }
 
         // Clean up
-        for (unsigned int i = 0; i < samples.size(); i++)
-        {
-            delete samples[i];
+        for (auto &sample : samples) {
+            delete sample;
         }
         samples.clear();
         delete params;
         delete context;
         return 0;
     }
-    catch(Exception e)
+    catch (Exception &e)
     {
         cerr << "Error: " << e.Message() << endl;
         return 1;
     }
 }
 
-int parseInput(MulticlassParameters &params, int argc, char** argv) {
+int parseInput(MulticlassParameters &params, int argc, char **argv)
+{
     // input arguments
     int min_argc = 7, argCtr = 0;
 
@@ -138,15 +142,15 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     {
         cerr << "Usage: " << argv[0]
              << " dimension num_classes (positive for optimal rmatrix computation, "
-                     "negative for uniform off-diagonal entries) priority (either c "
-                     "integers with low values indicating higher priority, or c "
-                     "floating points indicating class selection probability) r_values "
-                     "(c*(c+1)/2 numbers in row major order of the upper matrix, or "
-                     "only c diagonal entries) k_number (positive integer for the usual "
-                     "k number, negative integer for target number of samples, [0 1] "
-                     "float for rho-number, or positive float for specifying both the "
-                     "k-number/patience-factor and the rho-number) domain_size "
-                     "(dimension numbers)";
+                "negative for uniform off-diagonal entries) priority (either c "
+                "integers with low values indicating higher priority, or c "
+                "floating points indicating class selection probability) r_values "
+                "(c*(c+1)/2 numbers in row major order of the upper matrix, or "
+                "only c diagonal entries) k_number (positive integer for the usual "
+                "k number, negative integer for target number of samples, [0 1] "
+                "float for rho-number, or positive float for specifying both the "
+                "k-number/patience-factor and the rho-number) domain_size "
+                "(dimension numbers)";
         cerr << endl;
 
         return -1;
@@ -168,7 +172,7 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
 
     int num_classes_i = atoi(num_classes_spec);
     RMatrix::Method rmatrix_method =
-            (num_classes_spec[0] == '0'
+        (num_classes_spec[0] == '0'
              ? RMatrix::GEOMETRIC
              : (num_classes_i > 0 ? RMatrix::OPTIMAL : RMatrix::UNIFORM));
 
@@ -194,10 +198,11 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     for (unsigned int i = 0; i < priority_values.size(); i++)
     {
         priority_values[i] = class_probability_all_int
-                             ? static_cast<int>(floor(class_probability[i]))
-                             : 0;
+                                 ? static_cast<int>(floor(class_probability[i]))
+                                 : 0;
 
-        if ((priority_values[i] < 0) || (priority_values[i] >= params.num_classes))
+        if ((priority_values[i] < 0) ||
+            (priority_values[i] >= params.num_classes))
         {
             cerr << "priority number must be within [0 num_classes-1]" << endl;
             return -1;
@@ -226,8 +231,9 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     }
     cerr << endl;
 
-    min_argc += (params.dimension - 1) +
-                (params.num_classes - 1); // we now know the # of domain_size arguments
+    min_argc +=
+        (params.dimension - 1) +
+        (params.num_classes - 1); // we now know the # of domain_size arguments
     // and # of priority arguments
 
     int num_r_values = argc - min_argc + 1;
@@ -254,8 +260,8 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     cerr << endl;
 #endif
 
-    params.r_matrix = RMatrix::BuildRMatrix(
-            params.dimension, params.num_classes, rmatrix_method, input_r_values);
+    params.r_matrix = RMatrix::BuildRMatrix(params.dimension, params.num_classes,
+                                            rmatrix_method, input_r_values);
 
     vector<float> r_values;
     params.r_matrix.Get(r_values);
@@ -281,11 +287,12 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     float k_rho_number = atof(argv[++argCtr]);
     float rho_number = k_rho_number - floor(k_rho_number);
     int k_number =
-            (k_rho_number == floor(k_rho_number) ? static_cast<int>(k_rho_number)
-                                                 : 0);
+        (k_rho_number == floor(k_rho_number) ? static_cast<int>(k_rho_number)
+                                             : 0);
 
     vector<float> domain_size_spec;
-    while (((argCtr + 1) < argc) && (domain_size_spec.size() < params.dimension))
+    while (((argCtr + 1) < argc) &&
+           (domain_size_spec.size() < params.dimension))
     {
         domain_size_spec.push_back(atof(argv[++argCtr]));
     }
@@ -307,7 +314,7 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     }
 
     const float patience_factor = max(
-            static_cast<double>(1.0), abs(static_cast<double>(floor(k_rho_number))));
+        static_cast<double>(1.0), abs(static_cast<double>(floor(k_rho_number))));
 
     if (patience_factor != 0)
     {
@@ -326,10 +333,8 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
         }
     }
 
-
     // init grid
-    params.grid_domain_spec =
-            Grid::BuildDomainSpec(domain_size_spec);
+    params.grid_domain_spec = Grid::BuildDomainSpec(domain_size_spec);
 
     params.r_values = r_values;
     float min_r_value = params.r_values[0];
@@ -367,7 +372,7 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
 
 #ifdef DEBUG
         cerr << "num_grid_cells: ";
-        for(unsigned int i = 0; i < num_grid_cells.size(); i++)
+        for (unsigned int i = 0; i < num_grid_cells.size(); i++)
         {
             cerr << num_grid_cells[i] << " ";
         }
@@ -388,7 +393,7 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
             params.r_matrix.Get(vector<int>(2, i), value);
 
             target_num_samples_per_class[i] =
-                    Math::ComputeMaxNumSamples(params.dimension, value / rho_number);
+                Math::ComputeMaxNumSamples(params.dimension, value / rho_number);
 
             for (unsigned int j = 0; j < domain_size_spec.size(); j++)
             {
@@ -430,11 +435,13 @@ int parseInput(MulticlassParameters &params, int argc, char** argv) {
     return 0;
 }
 
-void generateSample(MulticlassParameters &params, SamplingContext &context, int num_samples, int which_priority_group)
+void generateSample(MulticlassParameters &params, SamplingContext &context,
+                    int num_samples, int which_priority_group)
 {
     Sample *sample = new Sample(params.dimension);
 
-    const PriorityGroup &priority_group = context.priority_groups[which_priority_group];
+    const PriorityGroup &priority_group =
+        context.priority_groups[which_priority_group];
     auto &total_num_samples = context.total_num_samples;
     auto &num_samples_per_class = context.num_samples_per_class;
     auto &current_failures_per_class = context.current_failures_per_class;
@@ -495,41 +502,42 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
 
 #ifdef DEBUG // useful debug
     cerr << "num_samples_per_class :";
-            for (unsigned int i = 0; i < num_samples_per_class.size(); i++)
-            {
-                cerr << " " << num_samples_per_class[i];
-            }
-            cerr << " "; // << endl;
-            cerr << "throw sample in class " << sample->id << endl;
+    for (unsigned int i = 0; i < num_samples_per_class.size(); i++)
+    {
+        cerr << " " << num_samples_per_class[i];
+    }
+    cerr << " "; // << endl;
+    cerr << "throw sample in class " << sample->id << endl;
 #endif
 
     if (sample->coordinate.Dimension() !=
         params.grid_domain_spec.domain_size.size())
     {
         throw Exception(
-                "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
+            "sample->coordinate.size() != grid_domain_spec.domain_size.size()");
     }
 
     vector<float> sample_domain_min_corner(params.dimension);
     vector<float> sample_domain_max_corner(params.dimension);
 
     const int has_tried_hard_enough =
-            (current_failures_per_class[sample->id] >
-             params.patience_factor * params.target_num_samples_per_class[sample->id]);
+        (current_failures_per_class[sample->id] >
+         params.patience_factor *
+             params.target_num_samples_per_class[sample->id]);
 
     for (int i = 0; i < params.dimension; i++)
     {
         sample_domain_min_corner[i] = 0;
-        sample_domain_max_corner[i] =
-                params.grid_domain_spec.domain_size[i] * params.grid_domain_spec.cell_size;
+        sample_domain_max_corner[i] = params.grid_domain_spec.domain_size[i] *
+                                      params.grid_domain_spec.cell_size;
     }
 
     for (int i = 0; i < sample->coordinate.Dimension(); i++)
     {
         sample->coordinate[i] =
-                Random::UniformRandom() *
+            Random::UniformRandom() *
                 (sample_domain_max_corner[i] - sample_domain_min_corner[i]) +
-                sample_domain_min_corner[i];
+            sample_domain_min_corner[i];
     }
 
     if (sample_ids.size() <= 0)
@@ -559,17 +567,18 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
 
 #ifdef DEBUG
             if (current_failures_per_class[sample->id] > 0) // debug
-                    {
-                        cerr << "current_failures_per_class[" << sample->id
-                             << "]: " << current_failures_per_class[sample->id] << endl;
-                    }
+            {
+                cerr << "current_failures_per_class[" << sample->id
+                     << "]: " << current_failures_per_class[sample->id] << endl;
+            }
 #endif
 
             if ((params.k_number == 0) && has_tried_hard_enough)
             {
                 // cerr << "try killing" << endl; // debug
                 vector<const Sample *> neighbors;
-                if (!params.grid->GetConflicts(*sample, *params.conflict_checker, neighbors))
+                if (!params.grid->GetConflicts(*sample, *params.conflict_checker,
+                                               neighbors))
                 {
                     throw Exception("cannot get conflicts");
                 }
@@ -577,8 +586,8 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
                 int neighbors_all_removable = 1;
 
                 const float sample_fill_ratio =
-                        num_samples_per_class[sample->id] * 1.0 /
-                        params.target_num_samples_per_class[sample->id];
+                    num_samples_per_class[sample->id] * 1.0 /
+                    params.target_num_samples_per_class[sample->id];
                 float sample_r_value = 0;
                 params.r_matrix.Get(vector<int>(2, sample->id), sample_r_value);
 
@@ -604,8 +613,8 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
                         if (current_neighbor.id == current_id)
                         {
                             current_neighbor_fill_ratio =
-                                    num_samples_per_class[current_id] * 1.0 /
-                                    params.target_num_samples_per_class[current_id];
+                                num_samples_per_class[current_id] * 1.0 /
+                                params.target_num_samples_per_class[current_id];
                         }
                     }
 
@@ -631,8 +640,8 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
 
 #ifdef _RECORD_SAMPLE_HISTORY
                         const SampleRecord new_record(neighbors[j]->id,
-                                                              SampleRecord::KILLED);
-                                sample_history.push_back(new_record);
+                                                      SampleRecord::KILLED);
+                        sample_history.push_back(new_record);
 #endif
 
                         delete neighbors[j];
@@ -666,44 +675,44 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
 
         switch (sample_fate)
         {
-            case SampleRecord::ACCEPTED:
-            {
+        case SampleRecord::ACCEPTED:
+        {
 #ifdef _RECORD_SAMPLE_HISTORY
-                const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
-                    sample_history.push_back(new_record);
+            const SampleRecord new_record(sample->id, SampleRecord::ACCEPTED);
+            sample_history.push_back(new_record);
 #endif
-                if (!params.grid->Add(*sample))
-                {
-                    throw Exception("cannot add sample");
-                    delete sample;
-                    sample = 0;
-                }
-                else
-                {
-                    num_samples++;
-                    total_num_samples++;
-                    num_samples_per_class[sample->id] += 1;
-                    sample = 0;
-                }
-                break;
-            }
-
-            case SampleRecord::REJECTED:
+            if (!params.grid->Add(*sample))
             {
-#ifdef _RECORD_SAMPLE_HISTORY
-                const SampleRecord new_record(sample->id, SampleRecord::REJECTED);
-                    sample_history.push_back(new_record);
-#endif
-                break;
+                throw Exception("cannot add sample");
+                delete sample;
+                sample = 0;
             }
+            else
+            {
+                num_samples++;
+                total_num_samples++;
+                num_samples_per_class[sample->id] += 1;
+                sample = 0;
+            }
+            break;
+        }
 
-            case SampleRecord::OUTSIDE:
-                // do nothing
-                break;
+        case SampleRecord::REJECTED:
+        {
+#ifdef _RECORD_SAMPLE_HISTORY
+            const SampleRecord new_record(sample->id, SampleRecord::REJECTED);
+            sample_history.push_back(new_record);
+#endif
+            break;
+        }
 
-            default:
-                throw Exception("unknown sample fate");
-                break;
+        case SampleRecord::OUTSIDE:
+            // do nothing
+            break;
+
+        default:
+            throw Exception("unknown sample fate");
+            break;
         }
     }
 
@@ -714,7 +723,8 @@ void generateSample(MulticlassParameters &params, SamplingContext &context, int 
     }
 }
 
-vector<const Sample *> play(MulticlassParameters &params, SamplingContext &context)
+vector<const Sample *> play(MulticlassParameters &params,
+                            SamplingContext &context)
 {
     // Initialize random number engine
     const unsigned long random_seed = time(0);
@@ -722,7 +732,8 @@ vector<const Sample *> play(MulticlassParameters &params, SamplingContext &conte
 
     // Initialize algorithm context
     context.priority_groups = BuildPriorityGroups(
-            params.dimension, params.priority_values, params.r_matrix, params.num_trials, params.target_num_samples);
+        params.dimension, params.priority_values, params.r_matrix,
+        params.num_trials, params.target_num_samples);
     context.total_num_samples = 0;
     context.num_samples_per_class = vector<int>(params.num_classes, 0);
     context.current_failures_per_class = vector<int>(params.num_classes, 0);
@@ -737,9 +748,11 @@ vector<const Sample *> play(MulticlassParameters &params, SamplingContext &conte
     timer.Start();
 
     for (unsigned int which_priority_group = 0;
-         which_priority_group < context.priority_groups.size(); which_priority_group++)
+         which_priority_group < context.priority_groups.size();
+         which_priority_group++)
     {
-        const PriorityGroup &priority_group = context.priority_groups[which_priority_group];
+        const PriorityGroup &priority_group =
+            context.priority_groups[which_priority_group];
 
 #ifdef DEBUG
         cerr << "classes: (";
@@ -760,7 +773,8 @@ vector<const Sample *> play(MulticlassParameters &params, SamplingContext &conte
 
         for (int trial = 0;
              ((params.k_number > 0) && (trial < priority_group.num_trials)) ||
-             ((params.k_number <= 0) && (num_samples < priority_group.target_num_samples));
+             ((params.k_number <= 0) &&
+              (num_samples < priority_group.target_num_samples));
              trial++)
         {
             generateSample(params, context, num_samples, which_priority_group);
