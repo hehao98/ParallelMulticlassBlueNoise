@@ -26,6 +26,14 @@ public:
         float cell_size;
     };
 
+    struct Cell
+    {
+        Cell(void);
+
+        // sample content does not belong to cell
+        vector<const Sample *> samples;
+    };
+
     // convenience routine to build a specific kind of domain_spec
     // with input float values that are mostly rational
     static DomainSpec BuildDomainSpec(const vector<float> & domain_spec);
@@ -75,13 +83,6 @@ protected:
     int GetConflicts(const Sample & sample, const ConflictChecker & checker, vector<const Sample *> & neighbors, const int find_all) const;
 
 protected:
-    struct Cell
-    {
-        Cell(void);
-
-        // sample content does not belong to cell
-        vector<const Sample *> samples;
-    };
 
     const DomainSpec _domain_spec;
     Array<Cell> _cells;

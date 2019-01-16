@@ -13,7 +13,7 @@
 
 #include <math.h>
 
-#define _ALLOW_MULTIPLE_SAMPLES_PER_CELL
+//#define _ALLOW_MULTIPLE_SAMPLES_PER_CELL
 
 Grid::DomainSpec Grid::BuildDomainSpec(const vector<float> & domain_spec)
 {

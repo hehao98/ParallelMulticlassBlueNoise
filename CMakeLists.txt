@@ -5,6 +5,7 @@ project(ParallelMulticlassBlueNoise)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS "-O3")
 
+
 # OpenGL Dependencies
 find_package(OpenGL REQUIRED)
 
@@ -39,3 +40,6 @@ target_link_libraries(DartThrowing ${LIBS})
 
 add_executable(ParallelDartThrowing src/ParallelDartThrowing.cpp)
 target_link_libraries(ParallelDartThrowing ${LIBS})
+
+add_executable(ExDartThrowing src/ExperimentalDartThrowing.cpp)
+target_link_libraries(ExDartThrowing ${LIBS})
