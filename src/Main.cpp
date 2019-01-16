@@ -13,6 +13,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include "stb_image.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw_gl3.h"
 
@@ -37,6 +38,7 @@ int gScreenWidth = 800;
 int gScreenHeight = 800;
 float gDeltaTime = 0.0f;
 float gLastFrame = 0.0f;
+int classType = -1;
 
 int main()
 {
@@ -58,6 +60,9 @@ int main()
     pointSet.readPointSetFromFile("../testdata/pointset1.txt", 0, 100, 0, 100);
     pointSet.updateRenderData(-1, 1, -1, 1);
 
+    SpectrumImage image;
+
+
     Shader shader("../shaders/point.vert", "../shaders/point.frag");
 
     // Game loop
@@ -72,13 +77,14 @@ int main()
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        //imGuiSetup(window);
+        imGuiSetup(window);
 
+        pointSet.updateRenderData(-1, 1, -1, 1, classType);
         pointSet.render(shader);
 
         // Render GUI last
-        //ImGui::Render();
-        //ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
+        ImGui::Render();
+        ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -112,6 +118,8 @@ void imGuiSetup(GLFWwindow *window)
 
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
                 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    ImGui::InputInt("Enter Class Type", &classType);
 
     if (ImGui::Button("Quit")) {
         glfwSetWindowShouldClose(window, true);

@@ -17,9 +17,11 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/glfw)
 
 # Rainbow Noise Library(From Li-Yi Wei's SIGGRAPH code)
 add_subdirectory(${CMAKE_SOURCE_DIR}/RainbowNoiseLibrary)
+add_subdirectory(${CMAKE_SOURCE_DIR}/RainbowNoiseSpectrum)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/RainbowNoiseLibrary)
+include_directories(${CMAKE_SOURCE_DIR}/RainbowNoiseSpectrum)
 
 # Organize source file
 set(IMGUI_SRC
@@ -28,7 +30,7 @@ set(IMGUI_SRC
         src/imgui/imgui_impl_glfw_gl3.cpp
         )
 
-set(LIBS ${LIBS} glfw ${OPENGL_gl_LIBRARY} RainbowNoiseLibrary)
+set(LIBS ${LIBS} glfw ${OPENGL_gl_LIBRARY} RainbowNoiseLibrary RainbowNoiseSpectrum)
 
 add_executable(
         Main src/Main.cpp src/PointSet.cpp src/glad.c ${IMGUI_SRC}

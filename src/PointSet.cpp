@@ -64,24 +64,38 @@ void PointSet::readPointSetFromFile(const char *path,
 }
 
 void PointSet::updateRenderData(float screenXmin, float screenXmax,
-                                float screenYmin, float screenYmax)
+                                float screenYmin, float screenYmax, int renderClass)
 {
     // Reconstruct vbuf to represent new data
     delete[] vbuf;
     delete[] tbuf;
-    vbufSize = 2 * points.size();
-    vbuf = new float[vbufSize];
-    for (int i = 0; i < points.size(); ++i) {
-        vbuf[2 * i]     = screenXmin + (screenXmax - screenXmin) *
-                          (float)((points[i].pos.x - this->xmin)/(this->xmax - this->xmin));
-        vbuf[2 * i + 1] = screenYmin + (screenYmax - screenYmin) *
-                          (float)((points[i].pos.y - this->ymin)/(this->ymax - this->ymin));
+
+    std::vector<Point> filteredPoints;
+    // Render all classes
+    if (renderClass == -1) {
+        filteredPoints = points;
+    } else { // Render a single class
+        for (int i = 0; i < points.size(); ++i) {
+            if (points[i].type == renderClass) {
+                filteredPoints.push_back(points[i]);
+            }
+        }
     }
-    tbufSize = points.size();
+
+    vbufSize = 2 * filteredPoints.size();
+    vbuf = new float[vbufSize];
+    for (int i = 0; i < filteredPoints.size(); ++i) {
+        vbuf[2 * i] = screenXmin + (screenXmax - screenXmin) *
+                                   (float) ((filteredPoints[i].pos.x - this->xmin) / (this->xmax - this->xmin));
+        vbuf[2 * i + 1] = screenYmin + (screenYmax - screenYmin) *
+                                       (float) ((filteredPoints[i].pos.y - this->ymin) / (this->ymax - this->ymin));
+    }
+    tbufSize = filteredPoints.size();
     tbuf = new int[tbufSize];
     for (int i = 0; i < tbufSize; ++i) {
-        tbuf[i] = points[i].type;
+        tbuf[i] = filteredPoints[i].type;
     }
+
 
     // Updata data in GPU
     if (vao == 0 && vbo1 == 0 && vbo2 == 0) {

@@ -34,7 +34,7 @@ public:
                               double xmin, double xmax, double ymin, double ymax);
 
     void updateRenderData(float screenXmin, float screenXmax,
-                          float screenYmin, float screenYmax);
+                          float screenYmin, float screenYmax, int renderClass = -1);
 
     void render(const Shader &shader);
 private:
