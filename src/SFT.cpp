@@ -8,11 +8,12 @@
               remove ppm output option for clarity
 */
 
-//#define _NO_DC_REMOVAL
+#define _NO_DC_REMOVAL
 
 #define _LEVERAGE_SYMMETRY
 
-#define _LINEAR_LFT
+//#define _LINEAR_LFT
+//#define _RANDOM_LFT
 
 #include <iostream>
 #include <fstream>

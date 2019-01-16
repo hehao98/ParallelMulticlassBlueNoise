@@ -110,9 +110,6 @@ int main(int argc, char **argv)
         Timer timer;
         timer.Start();
 
-        for (int i = 0; i < params->grid_domain_spec.domain_size.size(); ++i)
-            cout << params->grid_domain_spec.domain_size[i] << endl;
-
         // Run the algorithm
         vector<const Sample *> samples = play(*params, *context);
 

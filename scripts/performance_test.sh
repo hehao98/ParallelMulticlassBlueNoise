@@ -18,10 +18,12 @@
 ./DartThrowing 2 2 1 0 1 1 30 100 100
 
 # Correctness test & visualization
-./DartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
+./DartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
 ./Main
 
-./ParallelDartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
-./ExDartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
+./ParallelDartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
+./ExDartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
 
 ./SFT ../testdata/pointset1.txt ../testdata/spectrum.txt 2 1 1 256 -1
+./PFM2PPM ../testdata/spectrum.txt ../testdata/spectrum2.txt 1 1 0
+./Main

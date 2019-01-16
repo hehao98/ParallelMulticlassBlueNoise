@@ -47,3 +47,6 @@ target_link_libraries(ExDartThrowing ${LIBS})
 
 add_executable(SFT src/SFT.cpp)
 target_link_libraries(SFT ${LIBS})
+
+add_executable(PFM2PPM src/PFM2PPM.cpp)
+target_link_libraries(PFM2PPM ${LIBS})

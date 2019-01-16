@@ -51,7 +51,7 @@ void SpectrumImage::readSpectrumFromFile(const char *filepath)
     for (int i = 0; i < height * width; ++i) {
         float tmp;
         infile >> tmp >> tmp >> tmp;
-        image.push_back(tmp*tmp/255);
+        image.push_back(tmp/255.0);
     }
 
     if (texture == 0) {
