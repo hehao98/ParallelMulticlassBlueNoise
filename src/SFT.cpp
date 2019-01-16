@@ -55,7 +55,7 @@ int CountPositive(vector<int> & numbers)
 
 int Main(int argc, char **argv)
 {
-    int min_argc = 7;
+    int min_argc = 8;
 
 #if defined(_RANDOM_LFT)
     min_argc++;
@@ -71,7 +71,7 @@ int Main(int argc, char **argv)
 
     if(argc < min_argc)
     {
-        cerr << "Usage: " << argv[0] << " samples-file-name output-file-name dimension dimension-specs (*dimension* integers with positive ones indicate the 2D slices and the rest negative/zero ones indicate constant sampling frequency) dft-image-size dft-scale (i.e. maximum frequency in pixels. when dft-scale == dft-image-size no scaling occurs. use <= 0 for default built in value)";
+        cerr << "Usage: " << argv[0] << " samples-file-name output-file-name dimension class(-1 for all class) dimension-specs (*dimension* integers with positive ones indicate the 2D slices and the rest negative/zero ones indicate constant sampling frequency) dft-image-size dft-scale (i.e. maximum frequency in pixels. when dft-scale == dft-image-size no scaling occurs. use <= 0 for default built in value)";
 
 #if defined(_RANDOM_LFT)
         cerr << " percentage";
@@ -93,6 +93,7 @@ int Main(int argc, char **argv)
     const char * input_file_name = argv[++argCtr];
     const char * output_file_name = argv[++argCtr];
     const int dimension = atoi(argv[++argCtr]);
+    const int class_type = atoi(argv[++argCtr]);
     vector<int> dimension_spec;
     if(argc < (min_argc-1+dimension))
     {
@@ -192,8 +193,8 @@ int Main(int argc, char **argv)
         {
             sample.id = 0;
 
-            int tmp;
-            input >> tmp;
+            int this_class;
+            input >> this_class;
 
 #ifdef _SFT_READ_VALUE
             input >> sample.value;
@@ -201,6 +202,10 @@ int Main(int argc, char **argv)
             for(int i = 0; i < dimension; i++)
             {
                 input >> sample.coordinate[i];
+            }
+
+            if (class_type != -1 && this_class != class_type) {
+                continue;
             }
 
             if(input.good())

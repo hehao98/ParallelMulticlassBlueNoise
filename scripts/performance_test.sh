@@ -21,9 +21,22 @@
 ./DartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
 ./Main
 
-./ParallelDartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
-./ExDartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
+# Demo for original algorithm
+./DartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
+./SFT ../testdata/pointset1.txt ../testdata/spectrum.txt 2 -1 1 1 256 -1
+./SFT ../testdata/pointset1.txt ../testdata/spectrum0.txt 2 0 1 1 256 -1
+./SFT ../testdata/pointset1.txt ../testdata/spectrum1.txt 2 1 1 1 256 -1
+./PFM2PPM ../testdata/spectrum.txt ../testdata/spectrum.txt 1 1 0
+./PFM2PPM ../testdata/spectrum0.txt ../testdata/spectrum0.txt 1 1 0
+./PFM2PPM ../testdata/spectrum1.txt ../testdata/spectrum1.txt 1 1 0
+./Main
 
-./SFT ../testdata/pointset1.txt ../testdata/spectrum.txt 2 1 1 256 -1
-./PFM2PPM ../testdata/spectrum.txt ../testdata/spectrum2.txt 1 1 0
+# Demo for our algorithm
+./ExDartThrowing 2 2 1 0 0.01 0.01 10 1 1 > ../testdata/pointset1.txt
+./SFT ../testdata/pointset1.txt ../testdata/spectrum.txt 2 -1 1 1 256 -1
+./SFT ../testdata/pointset1.txt ../testdata/spectrum0.txt 2 0 1 1 256 -1
+./SFT ../testdata/pointset1.txt ../testdata/spectrum1.txt 2 1 1 1 256 -1
+./PFM2PPM ../testdata/spectrum.txt ../testdata/spectrum.txt 1 1 0
+./PFM2PPM ../testdata/spectrum0.txt ../testdata/spectrum0.txt 1 1 0
+./PFM2PPM ../testdata/spectrum1.txt ../testdata/spectrum1.txt 1 1 0
 ./Main

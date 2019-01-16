@@ -40,6 +40,8 @@ int gScreenHeight = 600;
 float gDeltaTime = 0.0f;
 float gLastFrame = 0.0f;
 int classType = -1;
+PointSet pointSet;
+SpectrumImage image;
 
 int main()
 {
@@ -56,12 +58,10 @@ int main()
 
     imGuiInit(window);
 
-    PointSet pointSet;
     //pointSet.generateWhiteNoisePointSet(10000, 0, 500, 0, 500);
     pointSet.readPointSetFromFile("../testdata/pointset1.txt", 0, 1, 0, 1);
     pointSet.updateRenderData(-1, 0, -1, 1);
 
-    SpectrumImage image;
     image.readSpectrumFromFile("../testdata/spectrum2.txt");
     //image.updateSpectrum(pointSet.points);
 
@@ -125,6 +125,14 @@ void imGuiSetup(GLFWwindow *window)
                 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
     ImGui::InputInt("Enter Class Type", &classType);
+
+    if (ImGui::Button("Update Spectrum")) {
+        if (classType == 0 || classType == 1) {
+            image.readSpectrumFromFile(("../testdata/spectrum" + std::to_string(classType) + ".txt").c_str());
+        } else {
+            image.readSpectrumFromFile("../testdata/spectrum.txt");
+        }
+    }
 
     if (ImGui::Button("Quit")) {
         glfwSetWindowShouldClose(window, true);
