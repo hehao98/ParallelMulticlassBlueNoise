@@ -469,11 +469,14 @@ vector<const Sample *> play(MulticlassParameters &params,
 
     RandomCounter counter(params.dimension, 0, int(params.domain_size[0]/params.grid->CellSize()));
 
+    counter.Reset();
+
     do {
         vector<int> gridIndex;
         counter.Get(gridIndex);
         generateSample(params, context, gridIndex);
     } while (counter.Next());
+
     // output
     vector<const Sample *> samples;
     params.grid->GetSamples(samples);

@@ -44,3 +44,6 @@ target_link_libraries(ParallelDartThrowing ${LIBS})
 
 add_executable(ExDartThrowing src/ExperimentalDartThrowing.cpp)
 target_link_libraries(ExDartThrowing ${LIBS})
+
+add_executable(SFT src/SFT.cpp)
+target_link_libraries(SFT ${LIBS})

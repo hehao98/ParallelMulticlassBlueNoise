@@ -23,3 +23,5 @@
 
 ./ParallelDartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
 ./ExDartThrowing 2 2 1 0 1 1 10 100 100 > ../testdata/pointset1.txt
+
+./SFT ../testdata/pointset1.txt ../testdata/spectrum.txt 2 1 1 256 -1

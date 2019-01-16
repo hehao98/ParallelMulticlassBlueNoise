@@ -3,6 +3,7 @@
 //
 
 #include "SpectrumImage.h"
+#include <cmath>
 
 void SpectrumImage::updateSpectrum(std::vector<PointSet::Point> points)
 {
@@ -16,12 +17,58 @@ void SpectrumImage::updateSpectrum(std::vector<PointSet::Point> points)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
 
-    // compute data from points
-    
+    float value = 0.001f;
+    const float PI = 3.1415926f;
+    for (int x = 0; x < size; ++x) {
+        for (int y = 0; y < size; ++y) {
+            data[x][y] = 0;
+            for (int i = 0; i < points.size(); ++i) {
+                data[x][y] += value * cos(2*PI*(points[i].pos.x*x + points[i].pos.y*y)/size);
+            }
+        }
+    }
 
+    glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, size, size, 0, GL_RED, GL_FLOAT, data);
     glGenerateMipmap(GL_TEXTURE_2D);
 }
+
+void SpectrumImage::readSpectrumFromFile(const char *filepath)
+{
+    std::ifstream infile;
+    infile.open(filepath);
+    if (infile.bad()) {
+        std::cerr << "Bad Filepath " << filepath << std::endl;
+        return;
+    }
+
+    std::string tmp;
+    infile >> tmp;
+    int dimension, height, width;
+    infile >> dimension >>  height >>width;
+
+    std::vector<float> image;
+    for (int i = 0; i < height * width; ++i) {
+        float tmp;
+        infile >> tmp >> tmp >> tmp;
+        image.push_back(tmp*tmp/255);
+    }
+
+    if (texture == 0) {
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        // Set texture wrapping/filtering options
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, height, width, 0, GL_RED, GL_FLOAT, image.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+}
+
 void SpectrumImage::render(const Shader &shader)
 {
     if (VAO == 0) {

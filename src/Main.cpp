@@ -62,7 +62,8 @@ int main()
     pointSet.updateRenderData(-1, 0, -1, 1);
 
     SpectrumImage image;
-    image.updateSpectrum(std::vector<PointSet::Point>());
+    image.readSpectrumFromFile("../testdata/spectrum.txt");
+    //image.updateSpectrum(pointSet.points);
 
     Shader shader("../shaders/point.vert", "../shaders/point.frag");
     Shader imageShader("../shaders/image.vert", "../shaders/image.frag");

@@ -14,9 +14,10 @@
 class SpectrumImage {
 public:
     void updateSpectrum(std::vector<PointSet::Point> points);
+    void readSpectrumFromFile(const char *filepath);
     void render(const Shader &shader);
 private:
-    const static int size = 1024;
+    const static int size = 100;
     float data[size][size];
     GLuint texture;
     GLuint VAO, VBO, EBO;

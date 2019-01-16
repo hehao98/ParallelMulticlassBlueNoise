@@ -24,6 +24,7 @@ public:
         glm::dvec2 pos;
         int type; // start from zero
     };
+    std::vector<Point> points;
 
     explicit PointSet();
 
@@ -37,8 +38,8 @@ public:
                           float screenYmin, float screenYmax, int renderClass = -1);
 
     void render(const Shader &shader);
+
 private:
-    std::vector<Point> points;
     double xmin, xmax, ymin, ymax;
 
     // Members for OpenGL draw calls
