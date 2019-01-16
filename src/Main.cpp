@@ -19,6 +19,7 @@
 
 #include "Shader.h"
 #include "PointSet.h"
+#include "SpectrumImage.h"
 
 // **********GLFW window related functions**********
 // Returns pointer to a initialized window with OpenGL context set up
@@ -34,8 +35,8 @@ void scrollCallback(GLFWwindow *window, double offsetX, double offsetY);
 void imGuiInit(GLFWwindow *window);
 void imGuiSetup(GLFWwindow *window);
 
-int gScreenWidth = 800;
-int gScreenHeight = 800;
+int gScreenWidth = 1200;
+int gScreenHeight = 600;
 float gDeltaTime = 0.0f;
 float gLastFrame = 0.0f;
 int classType = -1;
@@ -58,12 +59,13 @@ int main()
     PointSet pointSet;
     //pointSet.generateWhiteNoisePointSet(10000, 0, 500, 0, 500);
     pointSet.readPointSetFromFile("../testdata/pointset1.txt", 0, 100, 0, 100);
-    pointSet.updateRenderData(-1, 1, -1, 1);
+    pointSet.updateRenderData(-1, 0, -1, 1);
 
     SpectrumImage image;
-
+    image.updateSpectrum(std::vector<PointSet::Point>());
 
     Shader shader("../shaders/point.vert", "../shaders/point.frag");
+    Shader imageShader("../shaders/image.vert", "../shaders/image.frag");
 
     // Game loop
     while (!glfwWindowShouldClose(window)) {
@@ -79,8 +81,10 @@ int main()
 
         imGuiSetup(window);
 
-        pointSet.updateRenderData(-1, 1, -1, 1, classType);
+        pointSet.updateRenderData(-1, 0, -1, 1, classType);
         pointSet.render(shader);
+
+        image.render(imageShader);
 
         // Render GUI last
         ImGui::Render();

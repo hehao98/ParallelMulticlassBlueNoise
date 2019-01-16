@@ -5,7 +5,6 @@ project(ParallelMulticlassBlueNoise)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS "-O3")
 
-
 # OpenGL Dependencies
 find_package(OpenGL REQUIRED)
 
@@ -33,7 +32,7 @@ set(IMGUI_SRC
 set(LIBS ${LIBS} glfw ${OPENGL_gl_LIBRARY} RainbowNoiseLibrary RainbowNoiseSpectrum)
 
 add_executable(
-        Main src/Main.cpp src/PointSet.cpp src/glad.c ${IMGUI_SRC}
+        Main src/Main.cpp src/PointSet.cpp src/SpectrumImage.cpp src/glad.c ${IMGUI_SRC}
 )
 target_link_libraries(Main ${LIBS})
 

@@ -1,10 +1,9 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 
-PROJECT(RainbowNoiseSpectrum)
 
-INCLUDE_DIRECTORIES(${RainbowNoise_SOURCE_DIR}/Library)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/RainbowNoiseLibrary)
 
-ADD_LIBRARY(${PROJECT_NAME}
+ADD_LIBRARY(RainbowNoiseSpectrum
 
 DeformableLFT.cpp
 DeformableLFT.hpp
